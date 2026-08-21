@@ -1,0 +1,203 @@
+@import "tailwindcss";
+
+/* ── Plotline design tokens ─────────────────────────────────────────────
+   DS component grammar (nov-*): radii 12/16/20, block/tile patterns, chips,
+   dashed upload tiles, prompt-bar container r20 — with Plotline's own type
+   and palette. DS fonts/colors (Inter, #6933fa family) deliberately NOT used.
+   Plan surfaces light (Linear/Notion density); studio surfaces dark (Phase 2). */
+
+:root {
+  /* palette — "ink & cobalt" */
+  --paper: #faf9f6;
+  --card: #ffffff;
+  --ink: #16151a;
+  --ink-soft: #4c4854;
+  --muted: #77717f;
+  --line: #e7e4de;
+  --line-strong: #d5d1c8;
+  --accent: #2946e5;
+  --accent-deep: #1f38c7;
+  --accent-wash: #eef0fe;
+  --dark: #131217;
+  --dark-card: #1c1a22;
+  --dark-line: #2c2933;
+
+  /* evidence tags */
+  --ref: #0e7a5f;
+  --ref-wash: #e7f4ef;
+  --stat: #1e5fbf;
+  --stat-wash: #e9f1fc;
+  --trend: #b45309;
+  --trend-wash: #fbf0e1;
+  --principle: #8a8494;
+  --principle-wash: #f1eff4;
+
+  /* ratings + status */
+  --high: #0e7a5f;
+  --med: #b45309;
+  --low: #c2382e;
+  --low-wash: #fdecea;
+
+  /* radii — DS grammar */
+  --r-chip: 12px;
+  --r-card: 16px;
+  --r-modal: 20px;
+
+  --font-display: "Avenir Next", "Futura", "Segoe UI", sans-serif;
+  --font-body: "Avenir Next", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-wash: var(--accent-wash);
+  --color-dark: var(--dark);
+  --color-dark-card: var(--dark-card);
+  --color-dark-line: var(--dark-line);
+  --color-ref: var(--ref);
+  --color-ref-wash: var(--ref-wash);
+  --color-stat: var(--stat);
+  --color-stat-wash: var(--stat-wash);
+  --color-trend: var(--trend);
+  --color-trend-wash: var(--trend-wash);
+  --color-principle: var(--principle);
+  --color-principle-wash: var(--principle-wash);
+  --color-high: var(--high);
+  --color-med: var(--med);
+  --color-low: var(--low);
+  --color-low-wash: var(--low-wash);
+  --radius-chip: var(--r-chip);
+  --radius-card: var(--r-card);
+  --radius-modal: var(--r-modal);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* ── shared primitives ── */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.chip-select {
+  cursor: pointer;
+  user-select: none;
+  transition: all 120ms ease;
+}
+.chip-select:hover { border-color: var(--accent); color: var(--accent); }
+.chip-select[data-on="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+.upload-tile {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-card);
+  background: var(--card);
+  transition: border-color 120ms ease, background 120ms ease;
+  cursor: pointer;
+}
+.upload-tile:hover { border-color: var(--accent); background: var(--accent-wash); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--r-chip);
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 8px 16px;
+  transition: all 120ms ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-deep); }
+.btn-ghost { background: transparent; border-color: var(--line-strong); color: var(--ink-soft); }
+.btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.req { color: var(--low); }
+.opt { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+.input {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-chip);
+  background: var(--card);
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.input:focus { border-color: var(--accent); }
+.input::placeholder { color: var(--muted); opacity: 0.8; }
+
+.guideline { font-size: 12px; color: var(--muted); }
+
+/* evidence tag pills */
+.ev { border-radius: 8px; padding: 1px 7px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.ev-REF { background: var(--ref-wash); color: var(--ref); }
+.ev-STAT { background: var(--stat-wash); color: var(--stat); }
+.ev-TREND { background: var(--trend-wash); color: var(--trend); }
+.ev-PRINCIPLE { background: var(--principle-wash); color: var(--principle); font-weight: 500; }
+
+.rating-H { color: var(--high); font-weight: 700; }
+.rating-M { color: var(--med); font-weight: 700; }
+.rating-L { color: var(--low); font-weight: 700; }
+
+.mono { font-family: var(--font-mono); font-size: 11.5px; }
+
+/* drag & drop */
+.dragging { opacity: 0.4; }
+.drop-target { outline: 2px dashed var(--accent); outline-offset: 2px; }
+
+::selection { background: var(--accent-wash); }
