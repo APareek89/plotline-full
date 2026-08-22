@@ -9,11 +9,10 @@ import { ContextForm } from "@/components/context-form";
 export default function NewSeriesPage() {
   const router = useRouter();
   return (
-    <div className="mx-auto max-w-4xl anim-morph">
-      <div className="mb-6">
-        <p className="mono text-[11px] uppercase tracking-[0.18em] text-accent">Content Studio</p>
-        <h1 className="display mt-1 text-2xl font-bold">Start a new plan</h1>
-        <p className="mt-1 text-[13.5px] text-muted">
+    <div className="anim-morph px-6 py-3">
+      <div className="mb-3 flex items-baseline gap-3">
+        <h1 className="display text-xl font-bold">Start a new plan</h1>
+        <p className="text-[12.5px] text-muted">
           Fill the context blocks once — then everything is a conversation with the planning agent.
         </p>
       </div>

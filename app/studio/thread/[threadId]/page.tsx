@@ -301,9 +301,9 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
             const el = e.currentTarget;
             stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
           }}
-          className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-4"
         >
-          <div className="mx-auto max-w-[760px] space-y-4">
+          <div className="w-full space-y-4 pr-2">
             {messages.map((m) =>
               m.role === "agent" ? (
                 <div key={m.id} className="space-y-2">
@@ -351,7 +351,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
 
         {/* ---- prompt bar ---- */}
         <div className="border-t border-line bg-card px-5 py-3">
-          <div className="mx-auto max-w-[760px]">
+          <div className="w-full">
             {offline && (
               <p className="mb-1.5 text-[12px] font-semibold text-low">
                 Connection lost — the thread is safe; reconnecting…
@@ -399,7 +399,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
             onClick={closePanel}
             aria-hidden
           />
-          <div className="fixed right-0 top-[57px] z-30 h-[calc(100vh-57px)] min-[1200px]:static min-[1200px]:z-auto min-[1200px]:h-full">
+          <div className="fixed right-0 top-[57px] z-30 h-[calc(100vh-57px)] w-[min(92vw,560px)] min-[1200px]:static min-[1200px]:z-auto min-[1200px]:h-full min-[1200px]:w-[40%] min-[1200px]:shrink-0">
             <ArtifactPanel
               threadId={threadId}
               seriesId={thread?.series_id ?? ""}

@@ -71,7 +71,7 @@ export function ArtifactPanel({
 
   return (
     <aside
-      className="flex h-full w-[440px] shrink-0 flex-col border-l border-line bg-card"
+      className="flex h-full w-full flex-col border-l border-line bg-card"
       role="complementary"
       aria-label={`${artifact.title} details`}
     >

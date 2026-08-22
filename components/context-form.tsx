@@ -118,12 +118,12 @@ export function ContextForm({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="grid grid-cols-2 items-start gap-3">
       {/* Block 1 — what this is */}
-      <section className="card p-6">
-        <h3 className="text-[15px] font-bold">What are we planning?</h3>
+      <section className="card p-4">
+        <h3 className="text-[14px] font-bold">What are we planning?</h3>
         <p className="guideline mt-0.5">A series builds an audience over weeks; a one-time campaign produces ad variants for a brief.</p>
-        <div className="mt-4 grid grid-cols-2 gap-4">
+        <div className="mt-3 grid grid-cols-2 gap-3">
           <div>
             <p className="field-label">Name <span className="req">*</span></p>
             <p className="guideline mb-1.5">This becomes the plan&apos;s handle in the Plans tab.</p>
@@ -170,7 +170,7 @@ export function ContextForm({
             <p className="field-label">What do you want to say? <span className="opt">optional</span></p>
             <p className="guideline mb-1.5">Free text — angle, product, story you want to tell.</p>
             <textarea
-              className="input min-h-[72px]"
+              className="input min-h-[44px]"
               placeholder="e.g. help creators cut editing time with AI tools"
               value={form.description}
               onChange={(e) => set({ description: e.target.value })}
@@ -180,10 +180,12 @@ export function ContextForm({
       </section>
 
       {/* Addendum-01 §7.1 — positioning (all required: R1 + format feasibility depend on them) */}
-      <section className="card p-6">
-        <h3 className="text-[15px] font-bold">Positioning</h3>
-        <p className="guideline mt-0.5">The format stage and anti-generic checks depend on these three.</p>
-        <div className="mt-4 grid grid-cols-2 gap-4">
+      <section className="card p-4 col-span-2">
+        <div className="flex items-baseline gap-3">
+          <h3 className="text-[14px] font-bold">Positioning</h3>
+          <p className="guideline">The format stage and anti-generic checks depend on these three.</p>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-3">
           <div>
             <p className="field-label">Audience sophistication <span className="req">*</span></p>
             <p className="guideline mb-1.5">How much does your audience already know?</p>
@@ -206,7 +208,7 @@ export function ContextForm({
               ))}
             </div>
           </div>
-          <div className="col-span-2">
+          <div>
             <p className="field-label">Tool access <span className="req">*</span></p>
             <p className="guideline mb-1.5">What can you actually demo on screen? Receipts beat claims.</p>
             <input
@@ -220,10 +222,10 @@ export function ContextForm({
       </section>
 
       {/* Block 2 — purpose */}
-      <section className="card p-6">
-        <h3 className="text-[15px] font-bold">Purpose</h3>
+      <section className="card p-4">
+        <h3 className="text-[14px] font-bold">Purpose</h3>
         <p className="guideline mt-0.5">The planner optimizes ONE primary objective — weights change with it.</p>
-        <div className="mt-4 grid grid-cols-2 gap-4">
+        <div className="mt-3 grid grid-cols-2 gap-3">
           <div>
             <p className="field-label">Primary objective <span className="req">*</span></p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -313,21 +315,20 @@ export function ContextForm({
       </section>
 
       {/* Block 3 — teach the engine */}
-      <section className="card p-6">
-        <h3 className="text-[15px] font-bold">Teach the engine</h3>
-        <p className="guideline mt-0.5">
-          Upload references — the intake agent extracts style, tone and constraints (Claude vision). All optional.
-        </p>
-        <div className="mt-4 grid grid-cols-4 gap-3">
+      <section className="card p-4 col-span-2">
+        <div className="flex items-baseline gap-3">
+          <h3 className="text-[14px] font-bold">Teach the engine</h3>
+          <p className="guideline">Upload references — the intake agent extracts style, tone and constraints. All optional.</p>
+        </div>
+        <div className="mt-3 grid grid-cols-4 gap-2">
           {UPLOAD_TILES.map((tile) => {
             const count = uploads.filter((u) => u.kind === tile.kind).length;
             return (
-              <button key={tile.kind} className="upload-tile p-4 text-left" onClick={() => pickFile(tile.kind)}>
-                <p className="text-[13px] font-bold">
+              <button key={tile.kind} className="upload-tile p-2.5 text-left" title={tile.hint} onClick={() => pickFile(tile.kind)}>
+                <p className="text-[12.5px] font-bold">
                   {tile.label} <span className="opt">optional</span>
                 </p>
-                <p className="guideline mt-1">{tile.hint}</p>
-                <p className="mt-2 text-[12px] font-semibold text-accent">
+                <p className="mt-1 text-[11.5px] font-semibold text-accent">
                   {count > 0 ? `${count} uploaded ✓` : "+ add file"}
                 </p>
               </button>
@@ -343,10 +344,10 @@ export function ContextForm({
       </section>
 
       {error && (
-        <div className="rounded-[12px] bg-low-wash px-4 py-3 text-[13px] font-semibold text-low">{error}</div>
+        <div className="col-span-2 rounded-[12px] bg-low-wash px-4 py-2.5 text-[13px] font-semibold text-low">{error}</div>
       )}
 
-      <div className="flex justify-end">
+      <div className="col-span-2 flex justify-end">
         <button className="btn btn-primary !px-6 !py-2.5" onClick={submit} disabled={submitting}>
           {submitting ? "Extracting context…" : "Save context → pick inspiration"}
         </button>

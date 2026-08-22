@@ -66,7 +66,7 @@ export default function DiyPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="px-6 py-5">
       <div className="mb-5">
         <p className="mono text-[11px] uppercase tracking-[0.18em] text-accent">Creative Studio</p>
         <h1 className="display mt-1 text-2xl font-bold">DIY mode</h1>
@@ -125,7 +125,7 @@ export default function DiyPage() {
         {error && <p className="mt-2 text-[12.5px] font-semibold text-low">{error}</p>}
       </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-3">
+      <div className="mt-5 grid grid-cols-3 gap-3 xl:grid-cols-5">
         {assets.map((a) => (
           <div key={a.id} className="card p-2.5">
             {a.kind === "image" && (

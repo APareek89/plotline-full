@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen bg-paper text-ink">
         <header className="sticky top-0 z-40 border-b border-line bg-paper/90 backdrop-blur">
-          <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-5">
+          <div className="flex h-14 w-full items-center gap-6 px-4">
             <Link href="/" className="display text-[17px] font-bold tracking-tight">
               PLOTLINE<span className="text-accent">.</span>
             </Link>
@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-5 py-8">{children}</main>
+        <main className="w-full">{children}</main>
       </body>
     </html>
   );

@@ -56,8 +56,8 @@ export default function PlansPage() {
   };
 
   return (
-    <div>
-      <div className="mb-6 flex items-end justify-between">
+    <div className="px-6 py-5">
+      <div className="mb-5 flex items-end justify-between">
         <div>
           <p className="mono text-[11px] uppercase tracking-[0.18em] text-accent">Plans</p>
           <h1 className="display mt-1 text-2xl font-bold">Your series & campaigns</h1>
@@ -82,7 +82,7 @@ export default function PlansPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-4">
         {(series ?? []).map((s) => {
           const statusLabel =
             s.status === "locked"
