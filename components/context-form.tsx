@@ -38,6 +38,9 @@ export interface FormState {
   platforms: string[];
   cadence: { type: string; posts_per_week?: number; weeks?: number; concept_count?: number };
   content_type: string;
+  audience_sophistication: string;
+  tool_access: string;
+  positioning_depth: string;
 }
 
 const DEFAULT_FORM: FormState = {
@@ -50,6 +53,9 @@ const DEFAULT_FORM: FormState = {
   platforms: ["instagram_reels"],
   cadence: { type: "series", posts_per_week: 3, weeks: 2 },
   content_type: "text_video",
+  audience_sophistication: "",
+  tool_access: "",
+  positioning_depth: "",
 };
 
 export function ContextForm({
@@ -57,7 +63,7 @@ export function ContextForm({
   onCreated,
 }: {
   initial?: Partial<FormState>;
-  onCreated: (seriesId: string, context: any) => void;
+  onCreated: (seriesId: string, context: any, thread?: any) => void;
 }) {
   const [form, setForm] = useState<FormState>({ ...DEFAULT_FORM, ...initial });
   const [uploads, setUploads] = useState<{ id: string; filename: string; kind: string }[]>([]);
@@ -92,6 +98,10 @@ export function ContextForm({
       setError("Name is required — it becomes this plan's handle in the Plans tab.");
       return;
     }
+    if (!form.audience_sophistication || !form.tool_access.trim() || !form.positioning_depth) {
+      setError("Audience sophistication, tool access and positioning depth are required — the format stage and anti-generic checks depend on them.");
+      return;
+    }
     setSubmitting(true);
     try {
       const cadence =
@@ -99,7 +109,7 @@ export function ContextForm({
           ? { type: "series", posts_per_week: form.cadence.posts_per_week ?? 3, weeks: form.cadence.weeks ?? 2 }
           : { type: "one_time", concept_count: form.cadence.concept_count ?? 6 };
       const res = await api.series.create({ ...form, cadence }, uploads.map((u) => u.id));
-      onCreated(res.id, res.context);
+      onCreated(res.id, res.context, res.thread);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -164,6 +174,46 @@ export function ContextForm({
               placeholder="e.g. help creators cut editing time with AI tools"
               value={form.description}
               onChange={(e) => set({ description: e.target.value })}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Addendum-01 §7.1 — positioning (all required: R1 + format feasibility depend on them) */}
+      <section className="card p-6">
+        <h3 className="text-[15px] font-bold">Positioning</h3>
+        <p className="guideline mt-0.5">The format stage and anti-generic checks depend on these three.</p>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div>
+            <p className="field-label">Audience sophistication <span className="req">*</span></p>
+            <p className="guideline mb-1.5">How much does your audience already know?</p>
+            <div className="flex gap-1.5">
+              {["novice", "practitioner", "expert"].map((lvl) => (
+                <button key={lvl} className="chip chip-select" data-on={form.audience_sophistication === lvl} onClick={() => set({ audience_sophistication: lvl })}>
+                  {lvl}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="field-label">Positioning depth <span className="req">*</span></p>
+            <p className="guideline mb-1.5">Beginner-guide or power-user content?</p>
+            <div className="flex gap-1.5">
+              {[["beginner_guide", "Beginner guide"], ["power_user", "Power user"]].map(([id, label]) => (
+                <button key={id} className="chip chip-select" data-on={form.positioning_depth === id} onClick={() => set({ positioning_depth: id })}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="col-span-2">
+            <p className="field-label">Tool access <span className="req">*</span></p>
+            <p className="guideline mb-1.5">What can you actually demo on screen? Receipts beat claims.</p>
+            <input
+              className="input"
+              placeholder="e.g. CapCut + screen recording, product on hand, no on-camera shoots"
+              value={form.tool_access}
+              onChange={(e) => set({ tool_access: e.target.value })}
             />
           </div>
         </div>

@@ -201,3 +201,14 @@ h1, h2, h3, .display {
 .drop-target { outline: 2px dashed var(--accent); outline-offset: 2px; }
 
 ::selection { background: var(--accent-wash); }
+
+/* Addendum-01 §04: the ONE signature transition — form → summary collapse.
+   ≤300ms; prefers-reduced-motion kills it. */
+.anim-morph { animation: morph-in 280ms ease-out; }
+@keyframes morph-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-morph { animation: none; }
+}

@@ -132,6 +132,61 @@ export interface InspirationCard {
   sample_data?: boolean;
 }
 
+// ---- Addendum-01 §05: interaction envelope ----------------------------------
+
+export type ArtifactType =
+  | "context_summary" | "inspiration_set" | "format_options" | "concept"
+  | "plan" | "options" | "escalation" | "confidence_card" | "script_package"
+  | "brand_kit" | "final_delivery";
+
+export interface ArtifactAction {
+  id: string;
+  label: string;
+  style: "primary" | "secondary" | "danger";
+  event: string;
+}
+
+export interface ArtifactEnvelope {
+  type: ArtifactType;
+  id: string;
+  title: string;
+  payload: any;
+  actions: ArtifactAction[];
+}
+
+export interface AgentMessage {
+  thread_id: string;
+  text: string;
+  artifacts: ArtifactEnvelope[];
+  question: string | null;
+}
+
+export interface ThreadMessage {
+  id: string;
+  seq: number;
+  role: "agent" | "user";
+  envelope: AgentMessage | Record<string, any>;
+  created_at: number;
+}
+
+export interface Thread {
+  id: string;
+  series_id: string;
+  ordinal: number;
+  kind: string;
+  stage: string;
+  series_name?: string;
+  working?: string | null;
+  messages?: ThreadMessage[];
+  concept_states?: ConceptState[];
+}
+
+export interface ActivityEntry {
+  event: string;
+  detail: string | null;
+  created_at: number;
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -155,10 +210,11 @@ export const api = {
     list: () => req<Series[]>("/api/series"),
     get: (id: string) => req<Series>(`/api/series/${id}`),
     create: (form: any, uploadIds: string[]) =>
-      req<{ id: string; context: any }>("/api/series", {
+      req<{ id: string; context: any; thread?: Thread }>("/api/series", {
         method: "POST",
         body: JSON.stringify({ form, upload_ids: uploadIds }),
       }),
+    threads: (id: string) => req<Thread[]>(`/api/series/${id}/threads`),
     inspiration: (id: string) =>
       req<{ sample_data: boolean; selection_enabled: boolean; cards: InspirationCard[] }>(
         `/api/series/${id}/inspiration`
@@ -179,6 +235,28 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ ordered_ids: orderedIds }),
       }),
+  },
+  threads: {
+    get: (id: string, afterSeq = 0) => req<Thread>(`/api/threads/${id}?after_seq=${afterSeq}`),
+    // §05: both input paths normalize to a UserEvent; same handler server-side
+    sendText: (id: string, text: string, panelFocus?: string | null) =>
+      req(`/api/threads/${id}/events`, {
+        method: "POST",
+        body: JSON.stringify({
+          thread_id: id, type: "text", text,
+          panel_focus: panelFocus ?? null,
+        }),
+      }),
+    sendAction: (id: string, artifactId: string, event: string) =>
+      req(`/api/threads/${id}/events`, {
+        method: "POST",
+        body: JSON.stringify({
+          thread_id: id, type: "action",
+          action: { artifact_id: artifactId, event },
+        }),
+      }),
+    activity: (id: string, artifactId: string) =>
+      req<ActivityEntry[]>(`/api/threads/${id}/artifacts/${artifactId}/activity`),
   },
   uploads: {
     list: () => req<any[]>("/api/uploads"),

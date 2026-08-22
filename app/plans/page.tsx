@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Series, api } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { API_URL, Series, api } from "@/lib/api";
 
 // §12: Plans = all named series/campaigns with status. Returning users start
 // here: "Generate next post" → Creative Studio (Phase 2), "Open plan" → timeline.
@@ -79,6 +80,13 @@ export default function PlansPage() {
               <div className="mt-4 flex gap-2">
                 <Link
                   href={`/studio/${s.id}?stage=${s.concept_total ? "plan" : "context"}`}
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    const threads = await (await fetch(`${API_URL}/api/series/${s.id}/threads`)).json().catch(() => []);
+                    window.location.href = threads?.length
+                      ? `/studio/thread/${threads[threads.length - 1].id}`
+                      : `/studio/${s.id}?stage=${s.concept_total ? "plan" : "context"}`;
+                  }}
                   className="btn btn-ghost !px-3 !py-1.5"
                 >
                   Open plan
