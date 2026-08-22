@@ -137,7 +137,8 @@ export interface InspirationCard {
 export type ArtifactType =
   | "context_summary" | "inspiration_set" | "format_options" | "concept"
   | "plan" | "options" | "escalation" | "confidence_card" | "script_package"
-  | "brand_kit" | "final_delivery";
+  | "brand_kit" | "final_delivery"
+  | "asset_prompt" | "asset_set" | "voice_options" | "post_card";
 
 export interface ArtifactAction {
   id: string;

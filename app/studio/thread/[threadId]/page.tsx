@@ -8,6 +8,7 @@ import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  API_URL,
   AgentMessage,
   ArtifactEnvelope,
   ConceptState,
@@ -176,6 +177,20 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     }
     if (event === "edit_context") {
       router.push(`/studio?edit=${thread?.series_id}`);
+      return;
+    }
+    if (event === "produce") {
+      // Addendum-02 §01: concept card → Creative Studio per-post thread
+      setBusy(true);
+      try {
+        const res = await fetch(`${API_URL}/api/series/${thread?.series_id}/concepts/${artifactId}/produce`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ option: "A" }),
+        }).then((r) => r.json());
+        if (res.thread?.id) router.push(`/studio/thread/${res.thread.id}`);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);

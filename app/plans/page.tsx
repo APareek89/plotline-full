@@ -5,15 +5,55 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { API_URL, Series, api } from "@/lib/api";
 
-// §12: Plans = all named series/campaigns with status. Returning users start
-// here: "Generate next post" → Creative Studio (Phase 2), "Open plan" → timeline.
+// §12 + Addendum-02 §01: Plans = series home. Slot lifecycle Planned → In
+// production → Ready → Posted; "Generate next post" opens the next Creative
+// Studio thread; posted slots >72h without results get a paste nudge.
+const PROD_LABEL: Record<string, [string, string]> = {
+  planned: ["Planned", "!border-line !text-muted"],
+  in_production: ["In production", "!border-amber-500 !text-amber-700"],
+  ready: ["Ready", "!border-emerald-600 !text-emerald-700"],
+  posted: ["Posted", "!border-ink !text-ink"],
+};
+
 export default function PlansPage() {
   const [series, setSeries] = useState<Series[] | null>(null);
+  const [states, setStates] = useState<Record<string, any[]>>({});
+  const [cards, setCards] = useState<Record<string, any[]>>({});
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    api.series.list().then(setSeries).catch((e) => setError(e.message));
+    api.series.list().then(async (list) => {
+      setSeries(list);
+      const st: Record<string, any[]> = {};
+      const pc: Record<string, any[]> = {};
+      await Promise.all(list.slice(0, 10).map(async (s) => {
+        const full = await api.series.get(s.id).catch(() => null);
+        st[s.id] = full?.concept_states ?? [];
+        pc[s.id] = await fetch(`${API_URL}/api/post-cards?series_id=${s.id}`).then((r) => r.json()).catch(() => []);
+      }));
+      setStates(st);
+      setCards(pc);
+    }).catch((e) => setError(e.message));
   }, []);
+
+  const generateNext = async (seriesId: string) => {
+    const slots = states[seriesId] ?? [];
+    const next = slots.find((c) => (c.production_status ?? "planned") === "planned" && c.approved)
+      ?? slots.find((c) => (c.production_status ?? "planned") === "planned");
+    if (!next) return alert("No planned concepts left — plan more in the Content Studio thread.");
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/series/${seriesId}/concepts/${next.concept_id}/produce`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ option: "A" }),
+      }).then((r) => r.json());
+      if (res.thread?.id) router.push(`/studio/thread/${res.thread.id}`);
+      else if (res.post_card) alert("Text-only concept — Post Card created directly (see My Space).");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div>
@@ -75,6 +115,20 @@ export default function PlansPage() {
                   <p className="mt-1 text-[12px] text-muted">
                     {s.concept_approved}/{s.concept_total} concepts approved
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {(states[s.id] ?? []).map((c) => {
+                      const [label, cls] = PROD_LABEL[c.production_status ?? "planned"] ?? PROD_LABEL.planned;
+                      const card = (cards[s.id] ?? []).find((pc) => pc.concept_id === c.concept_id);
+                      const nudge = card?.status === "posted" && !card.results_pasted &&
+                        Date.now() / 1000 - (card.posted_at ?? 0) > 72 * 3600;
+                      return (
+                        <span key={c.concept_id} className={`chip ${cls}`}
+                              title={nudge ? "Posted >72h — paste results in My Space to feed the next plan" : label}>
+                          {c.concept_id} · {label}{nudge ? " · results?" : ""}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
               <div className="mt-4 flex gap-2">
@@ -91,12 +145,14 @@ export default function PlansPage() {
                 >
                   Open plan
                 </Link>
-                <span
-                  className="btn btn-ghost !px-3 !py-1.5 cursor-not-allowed opacity-50"
-                  title="Jumps into a Creative Studio thread — arrives in Phase 2"
+                <button
+                  className="btn btn-primary !px-3 !py-1.5"
+                  disabled={busy || !s.concept_total}
+                  onClick={() => generateNext(s.id)}
+                  title="Opens the next Creative Studio thread for this series"
                 >
                   Generate next post
-                </span>
+                </button>
               </div>
             </div>
           );
