@@ -18,9 +18,20 @@ import {
   api,
 } from "@/lib/api";
 import { ArtifactCard } from "@/components/thread-artifacts";
+import { CampaignArtifactCard, isCampaignArtifact } from "@/components/campaign-artifacts";
 import { ArtifactPanel } from "@/components/artifact-panel";
+import { CampaignStyles, PromptModal } from "@/components/campaign-blocks";
 
 const POLL_MS = 1200;
+
+// The kind decides the whole theme, so it can't wait for the first poll: the
+// campaign screens navigate with ?kind=campaign, and every thread caches what
+// it turned out to be for the next visit.
+const KIND_PREFIX = "plotline.threadkind.";
+
+const PROMPT_HINT = "⌘↵ send · / focus · Esc closes panel · ↑ edits last message";
+const PLACEHOLDER_MS = 'Tweak anything… ("approve o2", "regenerate o1 — punchier", "skip templates")';
+const PLACEHOLDER_LEGACY = 'Tweak anything… ("approve c2", "regenerate c3 — punchier", "pick f1")';
 
 export default function ThreadPage({ params }: { params: Promise<{ threadId: string }> }) {
   const { threadId } = use(params);
@@ -31,6 +42,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [states, setStates] = useState<Record<string, ConceptState>>({});
   const [seriesList, setSeriesList] = useState<Series[]>([]);
+  const [campaignList, setCampaignList] = useState<any[]>([]);
   const [threadsBySeries, setThreadsBySeries] = useState<Record<string, Thread[]>>({});
   const [working, setWorking] = useState<string | null>(null);
   const [panel, setPanel] = useState<ArtifactEnvelope | null>(null);
@@ -42,6 +54,31 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const scroller = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const stick = useRef(true);
+
+  // ---- theme kind: hint → cache → the thread itself (§Addendum-03) ----
+  const kindKey = `${KIND_PREFIX}${threadId}`;
+  const [kindHint, setKindHint] = useState<string | null>(search.get("kind"));
+  useEffect(() => {
+    setKindHint(search.get("kind") ?? localStorage.getItem(kindKey));
+  }, [kindKey, search]);
+  useEffect(() => {
+    if (thread?.kind) localStorage.setItem(kindKey, thread.kind);
+  }, [kindKey, thread?.kind]);
+
+  // The thread fills from under the app header to the viewport floor. Measured,
+  // not assumed: layout.tsx belongs to another lane, and the 57px Phase-1 guess
+  // left a 3.5px dead strip (h-14 + 1px border at a 15px root is 53.5px).
+  const shell = useRef<HTMLDivElement>(null);
+  const [shellTop, setShellTop] = useState(53.5);
+  useEffect(() => {
+    const measure = () => {
+      const top = shell.current?.getBoundingClientRect().top;
+      if (top != null) setShellTop(top + window.scrollY);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
 
   // ---- draft persistence per thread (§04) ----
   useEffect(() => {
@@ -87,6 +124,10 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
 
   // ---- rail data ----
   useEffect(() => {
+    if (msMode) {
+      api.campaigns.list().then(setCampaignList).catch(() => setCampaignList([]));
+      return;
+    }
     api.series.list().then(async (list) => {
       setSeriesList(list);
       const entries = await Promise.all(
@@ -137,16 +178,25 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   }, [messages, working]);
 
   // ---- input paths (§05: both normalize to UserEvent) ----
-  const sendText = async () => {
+  // UserEvent is Strict and has no attachment field, so upload ids ride in the
+  // message body on their own line. Worded with no bare digit and no dash on
+  // purpose: app/campaign.py's command grammar reads counts, option ids and the
+  // "— note" tail out of this same string, and must still see only the user's.
+  const sendText = async (uploadIds: string[] = []) => {
     const text = draft.trim();
-    if (!text || busy || offline) return;
+    if ((!text && !uploadIds.length) || busy || offline) return false;
     setBusy(true);
     setDraft("");
     try {
-      await api.threads.sendText(threadId, text, panel?.id ?? null);
+      const body = [text, uploadIds.length ? `[attached images: ${uploadIds.join(" ")}]` : ""]
+        .filter(Boolean)
+        .join("\n");
+      await api.threads.sendText(threadId, body, panel?.id ?? null);
       await poll();
-    } catch (e) {
+      return true;
+    } catch {
       setDraft(text); // don't lose the message
+      return false;
     } finally {
       setBusy(false);
     }
@@ -230,17 +280,80 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const ctx = thread ? seriesList.find((s) => s.id === thread.series_id)?.context : null;
   const objective = ctx?.objective ?? "followers";
   const threadLabel = thread ? `${thread.series_name || "…"} — ${String(thread.ordinal).padStart(2, "0")}` : "…";
+  // Addendum-03: campaign threads run the dark Marketing Studio theme; the
+  // legacy Plotline threads keep the light surfaces untouched.
+  const kind = thread?.kind ?? kindHint;
+  const msMode = kind === "campaign";
+  const fill = { height: `calc(100dvh - ${shellTop}px)` };
+
+  // Same two lines above either prompt bar.
+  const offlineLine = offline ? (
+    <p className="mb-1.5 text-[12px] font-semibold text-low">Connection lost — the thread is safe; reconnecting…</p>
+  ) : null;
+  const panelChip = panel ? (
+    <button
+      className="chip mb-1.5 !border-accent !text-accent"
+      onClick={closePanel}
+      title='Messages resolve "this / it" to the open artifact'
+    >
+      {panel.id} · {panel.title.slice(0, 40)} ✕
+    </button>
+  ) : null;
+
+  // Neither theme is known yet (a cold link to a thread this browser has never
+  // opened). Light chrome here would be repainted dark a poll later, so hold
+  // the surfaces and show the one honest thing we have.
+  if (!kind) {
+    return (
+      <div ref={shell} className="flex items-center justify-center" style={fill} role="status">
+        <p className="text-[13px] italic text-muted">
+          {offline ? "Can't reach the thread API — retrying…" : "Loading thread…"}
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-[calc(100vh-57px)] overflow-hidden">
+    <div
+      ref={shell}
+      className={`flex overflow-hidden ${msMode ? "ms-dark bg-[var(--ms-bg,#0E1116)] text-[var(--ms-text,#FFFFFF)]" : ""}`}
+      style={{ ...fill, ["--thread-top" as string]: `${shellTop}px` } as React.CSSProperties}
+    >
+      {msMode && <CampaignStyles />}
       {/* ---- left rail: series only, numbered threads, no stages (§03) ---- */}
-      <aside className="hidden w-[230px] shrink-0 overflow-y-auto border-r border-line bg-paper/60 p-3 lg:block" aria-label="Series">
+      <aside
+        className="hidden w-[230px] shrink-0 overflow-y-auto border-r border-line bg-paper/60 p-3 lg:block"
+        aria-label={msMode ? "Campaigns" : "Series"}
+      >
         <div className="flex items-center justify-between px-1">
-          <p className="field-label">Series</p>
-          <Link href="/studio" className="text-[12px] font-semibold text-accent">+ New</Link>
+          {/* one mode's vocabulary at a time — a campaign thread never says series */}
+          <p className="field-label">{msMode ? "Campaigns" : "Series"}</p>
+          <Link href={msMode ? "/studio/campaign" : "/studio"} className="text-[12px] font-semibold text-accent">
+            + New
+          </Link>
         </div>
         <div className="mt-2 space-y-3">
-          {(["active", "done"] as const).map((group) => {
+          {msMode
+            ? campaignList.map((c: any) => {
+                const active = c.thread_id === threadId;
+                return (
+                  <Link
+                    key={c.id}
+                    href={`/studio/thread/${c.thread_id}?kind=campaign`}
+                    className={`block truncate rounded-[10px] border-l-[3px] px-2.5 py-1.5 text-[12.5px] ${
+                      active
+                        ? "border-l-[var(--ms-blue,#4353FF)] bg-[var(--ms-elev,#1E242E)] font-bold"
+                        : "border-l-transparent hover:bg-[var(--ms-elev,#1E242E)]"
+                    }`}
+                    title={`${c.name} — ${c.status}`}
+                  >
+                    {active && <span className="mr-1 text-[var(--ms-blue-text,#A3AEFF)]">●</span>}
+                    {c.name}
+                  </Link>
+                );
+              })
+            : null}
+          {!msMode && (["active", "done"] as const).map((group) => {
             const items = seriesList.filter((s) =>
               group === "active" ? s.status !== "approved" : s.status === "approved"
             );
@@ -291,7 +404,9 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
       {/* ---- center: the thread ---- */}
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="border-b border-line bg-card px-5 py-2.5">
-          <p className="mono text-[10.5px] uppercase tracking-wider text-accent">Content Studio</p>
+          <p className="mono text-[10.5px] uppercase tracking-wider text-accent">
+            {msMode ? "Campaign Studio" : "Content Studio"}
+          </p>
           <h1 className="text-[15px] font-bold">{threadLabel}</h1>
         </div>
 
@@ -312,16 +427,26 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
                       {(m.envelope as AgentMessage).text}
                     </p>
                   )}
-                  {((m.envelope as AgentMessage).artifacts ?? []).map((a) => (
-                    <ArtifactCard
-                      key={`${m.id}-${a.id}`}
-                      artifact={a}
-                      onOpen={openPanel}
-                      onAction={sendAction}
-                      busy={busy}
-                      approved={states[a.id]?.approved === 1}
-                    />
-                  ))}
+                  {((m.envelope as AgentMessage).artifacts ?? []).map((a) =>
+                    isCampaignArtifact(a.type) ? (
+                      <CampaignArtifactCard
+                        key={`${m.id}-${a.id}`}
+                        artifact={a}
+                        onOpen={openPanel}
+                        onAction={sendAction}
+                        busy={busy}
+                      />
+                    ) : (
+                      <ArtifactCard
+                        key={`${m.id}-${a.id}`}
+                        artifact={a}
+                        onOpen={openPanel}
+                        onAction={sendAction}
+                        busy={busy}
+                        approved={states[a.id]?.approved === 1}
+                      />
+                    )
+                  )}
                   {(m.envelope as AgentMessage).question && (
                     <p className="text-[13.5px] font-semibold">{(m.envelope as AgentMessage).question}</p>
                   )}
@@ -349,46 +474,52 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
           </div>
         </div>
 
-        {/* ---- prompt bar ---- */}
-        <div className="border-t border-line bg-card px-5 py-3">
-          <div className="w-full">
-            {offline && (
-              <p className="mb-1.5 text-[12px] font-semibold text-low">
-                Connection lost — the thread is safe; reconnecting…
-              </p>
-            )}
-            {panel && (
-              <button
-                className="chip mb-1.5 !border-accent !text-accent"
-                onClick={closePanel}
-                title='Messages resolve "this / it" to the open artifact'
-              >
-                {panel.id} · {panel.title.slice(0, 40)} ✕
-              </button>
-            )}
-            <div className="flex items-end gap-2">
-              <textarea
-                ref={promptRef}
-                className="input min-h-[44px] flex-1 resize-none"
-                placeholder='Tweak anything… ("approve c2", "regenerate c3 — punchier", "pick f1")'
-                value={draft}
-                disabled={offline}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={onPromptKey}
-                aria-label="Message the planning agent"
-              />
-              <button
-                className="btn btn-primary !rounded-full !px-4 !py-2.5"
-                onClick={sendText}
-                disabled={busy || offline || !draft.trim()}
-                aria-label="Send"
-              >
-                ↑
-              </button>
+        {/* ---- prompt bar: the v2 modal on campaign threads, with the attach
+             counter and the honestly-inert gear; legacy threads keep theirs ---- */}
+        {msMode ? (
+          <PromptModal
+            placeholder={PLACEHOLDER_MS}
+            note={PROMPT_HINT}
+            value={draft}
+            onValue={setDraft}
+            onSend={(_text, uploadIds) => sendText(uploadIds)}
+            onKeyDown={onPromptKey}
+            inputRef={promptRef}
+            busy={busy}
+            offline={offline}
+          >
+            {offlineLine}
+            {panelChip}
+          </PromptModal>
+        ) : (
+          <div className="border-t border-line bg-card px-5 py-3">
+            <div className="w-full">
+              {offlineLine}
+              {panelChip}
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={promptRef}
+                  className="input min-h-[44px] flex-1 resize-none"
+                  placeholder={PLACEHOLDER_LEGACY}
+                  value={draft}
+                  disabled={offline}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={onPromptKey}
+                  aria-label="Message the planning agent"
+                />
+                <button
+                  className="btn btn-primary !rounded-full !px-4 !py-2.5"
+                  onClick={() => sendText()}
+                  disabled={busy || offline || !draft.trim()}
+                  aria-label="Send"
+                >
+                  ↑
+                </button>
+              </div>
+              <p className="mt-1 text-[10.5px] text-muted">{PROMPT_HINT}</p>
             </div>
-            <p className="mt-1 text-[10.5px] text-muted">⌘↵ send · / focus · Esc closes panel · ↑ edits last message</p>
           </div>
-        </div>
+        )}
       </main>
 
       {/* ---- right panel (§02) — ≥1200px sits beside; below, overlay ---- */}
@@ -399,7 +530,8 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
             onClick={closePanel}
             aria-hidden
           />
-          <div className="fixed right-0 top-[57px] z-30 h-[calc(100vh-57px)] w-[min(92vw,560px)] min-[1200px]:static min-[1200px]:z-auto min-[1200px]:h-full min-[1200px]:w-[40%] min-[1200px]:shrink-0">
+          {/* --thread-top is the measured header height, set on the shell */}
+          <div className="fixed right-0 top-[var(--thread-top)] z-30 h-[calc(100dvh-var(--thread-top))] w-[min(92vw,560px)] min-[1200px]:static min-[1200px]:z-auto min-[1200px]:h-full min-[1200px]:w-[40%] min-[1200px]:shrink-0">
             <ArtifactPanel
               threadId={threadId}
               seriesId={thread?.series_id ?? ""}

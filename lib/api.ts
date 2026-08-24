@@ -138,7 +138,10 @@ export type ArtifactType =
   | "context_summary" | "inspiration_set" | "format_options" | "concept"
   | "plan" | "options" | "escalation" | "confidence_card" | "script_package"
   | "brand_kit" | "final_delivery"
-  | "asset_prompt" | "asset_set" | "voice_options" | "post_card";
+  | "asset_prompt" | "asset_set" | "voice_options" | "post_card"
+  // Addendum-03 (Marketing Studio v2)
+  | "campaign_option" | "template_picker" | "campaign_detail" | "model_confirm"
+  | "creative_set" | "ad_card" | "intake_progress";
 
 export interface ArtifactAction {
   id: string;
@@ -186,6 +189,194 @@ export interface ActivityEntry {
   event: string;
   detail: string | null;
   created_at: number;
+}
+
+// generation_log rows — what was actually generated, as opposed to what the
+// agent proposed/approved (ActivityEntry). Separate tables, never conflated.
+export interface GenerationLogEntry {
+  id: string;
+  thread_id: string | null;
+  asset_id: string | null;
+  event: string; // generate | reroll | seam_qa | edit_prompt | use_as_reference
+  prompt: string | null;
+  model: string | null;
+  seed: string | null;
+  cost: number; // USD — ad-card totals are credits (1 credit = $0.10)
+  created_at: number;
+}
+
+// ---- Addendum-03 §Marketing Studio v2: campaign contracts -------------------
+// Mirrors app/schemas.py exactly. A campaign IS a series (same row); its
+// threads carry kind="campaign".
+
+export type CampaignObjective = "awareness" | "traffic" | "conversions";
+export type CreativeType = "video" | "image";
+export type CampaignStatus = "draft" | "planned" | "in_production" | "ready" | "live";
+
+export interface ProductBlock {
+  name: string;
+  description: string;
+  image_upload_ids: string[]; // 3–8 → product pack / consistency lock
+}
+
+export interface CampaignBlock {
+  objective: CampaignObjective; // drives CCF weights
+  target_audience: string;
+  platforms: string[];
+  description: string | null;
+  creative_type: CreativeType;
+}
+
+export interface BrandBlock {
+  url: string | null;
+  palette: string[]; // hex
+  font: string | null;
+  logo_upload_id: string | null;
+  tagline: string | null;
+  policy_upload_id: string | null;
+  // extracted from the policy doc + product description, then one-tap
+  // confirmed — the confirmed list is the claims source of truth
+  approved_claims: string[];
+  banned_words: string[];
+  claims_confirmed: boolean;
+}
+
+export interface CampaignContext {
+  name: string;
+  product: ProductBlock | null;
+  campaign: CampaignBlock | null;
+  brand: BrandBlock | null;
+}
+
+export interface CardsDone {
+  product: boolean;
+  campaign: boolean;
+  brand: boolean;
+}
+
+export interface CampaignOption {
+  option_id: string; // o1, o2, o3
+  name_line: string;
+  description: string;
+  storyline: string;
+  objective_echo: string;
+  why_it_fits: string;
+  evidence: Evidence[]; // source_ids or an honest gap
+}
+
+export interface TemplateRef {
+  id: string;
+  type: "image" | "video";
+  style_descriptors: string[];
+  thumb?: string | null; // /api-served thumbnail (manifest.json)
+}
+
+export interface DetailShot {
+  slot: string; // shot_01 | slide_01
+  duration_s: number | null;
+  visual_prompt: string;
+  vo_or_copy: string | null;
+}
+
+export interface CampaignDetail {
+  creative_type: CreativeType;
+  shots: DetailShot[];
+  copy_primary: string;
+  cta: string;
+  claims_used: string[]; // ⊆ confirmed claims
+  style_ref: TemplateRef | null;
+  version: number;
+  changes: string[]; // refine-loop diff log
+}
+
+export interface VariantSpec {
+  variant_id: string; // A, B, C
+  delta: string; // named delta — never a rewording
+  hypothesis: string;
+  cost_usd: number;
+}
+
+export interface ModelConfirm {
+  recommended_model: string;
+  reason: string;
+  cost_usd: number;
+  settings_note: string;
+  variants_proposed: VariantSpec[];
+}
+
+export interface AdMedia {
+  kind: "video" | "image" | "audio";
+  ratio: string;
+  duration_s: number | null;
+  url: string;
+  cover_url: string | null;
+  params: Record<string, any>;
+}
+
+export interface AdCard {
+  id: string;
+  campaign_id: string;
+  thread_id: string;
+  option_id: string;
+  variant_group_id: string | null;
+  variant_id: string | null;
+  creative_type: CreativeType;
+  placements: Record<string, string>; // platform → copy
+  ratios: string[];
+  naming: string;
+  media: AdMedia[];
+  total_cost_credits: number;
+  status: "draft" | "ready" | "live";
+  created_at: number;
+}
+
+export interface SeatScore {
+  element: ElementName;
+  rating: Rating;
+  reason: string;
+  evidence: Evidence[];
+}
+
+export interface SeatReview {
+  seat: "performance" | "brand" | "platform";
+  element_scores: SeatScore[];
+  kill_recommendation: string | null;
+  fixes: { priority: number; change: string }[];
+}
+
+export interface CampaignSummary {
+  id: string;
+  name: string;
+  objective: string;
+  status: CampaignStatus;
+  creative_count: number;
+  spend_credits: number;
+  thread_id: string | null;
+}
+
+export interface CampaignRecord {
+  id: string;
+  name: string;
+  context: CampaignContext;
+  status: CampaignStatus;
+  cards_done: CardsDone;
+  threads: Thread[];
+  ad_cards: AdCard[];
+}
+
+// system extractor pipeline — never an agent tool; the user confirms the fill
+export interface BrandExtract {
+  palette: string[];
+  font: string | null;
+  logo_url: string | null;
+  tagline: string | null;
+  source_url: string;
+  notes: string[];
+}
+
+export interface ClaimsExtract {
+  approved_claims: string[];
+  banned_words: string[];
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -258,6 +449,9 @@ export const api = {
       }),
     activity: (id: string, artifactId: string) =>
       req<ActivityEntry[]>(`/api/threads/${id}/artifacts/${artifactId}/activity`),
+    // thread-scoped, not artifact-scoped — one log covers every asset in the run
+    generationLog: (id: string) =>
+      req<GenerationLogEntry[]>(`/api/threads/${id}/generation-log`),
   },
   uploads: {
     list: () => req<any[]>("/api/uploads"),
@@ -273,6 +467,42 @@ export const api = {
   performance: {
     list: () => req<any[]>("/api/performance"),
     add: (data: any) => req<any>("/api/performance", { method: "POST", body: JSON.stringify(data) }),
+  },
+  // ---- Addendum-03: Marketing Studio ----
+  campaigns: {
+    list: () => req<CampaignSummary[]>("/api/campaigns"),
+    get: (id: string) => req<CampaignRecord>(`/api/campaigns/${id}`),
+    create: (name: string) =>
+      req<{ campaign_id: string; thread: Thread }>("/api/campaigns", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      }),
+    saveBlock: (id: string, block: "product" | "campaign" | "brand", data: any) =>
+      req<{ context: CampaignContext; cards_done: CardsDone }>(
+        `/api/campaigns/${id}/blocks/${block}`,
+        { method: "PUT", body: JSON.stringify(data) }
+      ),
+    // system pipeline fills palette/font/logo/tagline; the user confirms/edits
+    fetchBrand: (id: string, url: string) =>
+      req<BrandExtract>(`/api/campaigns/${id}/brand/fetch`, {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      }),
+    // candidates only — confirmed list is written back via saveBlock("brand")
+    extractClaims: (id: string) =>
+      req<ClaimsExtract>(`/api/campaigns/${id}/claims/extract`, { method: "POST" }),
+    // 422 lists the missing blocks — rumination never starts on a half context
+    start: (id: string) => req<{ ok: true }>(`/api/campaigns/${id}/start`, { method: "POST" }),
+  },
+  templates: {
+    list: () => req<TemplateRef[]>("/api/templates"),
+  },
+  adCards: {
+    list: (campaignId?: string) =>
+      req<AdCard[]>(`/api/ad-cards${campaignId ? `?campaign_id=${encodeURIComponent(campaignId)}` : ""}`),
+    get: (id: string) => req<AdCard>(`/api/ad-cards/${id}`),
+    bundleUrl: (id: string) => `${API_URL}/api/ad-cards/${id}/bundle`,
+    markLive: (id: string) => req<AdCard>(`/api/ad-cards/${id}/mark-live`, { method: "POST" }),
   },
 };
 
@@ -319,6 +549,21 @@ export const PLATFORM_LABELS: Record<string, string> = {
   instagram_feed: "IG Feed",
   linkedin: "LinkedIn",
   x: "X",
+};
+
+// Addendum-03 My Campaigns lifecycle: Draft → Planned → In production → Ready → Live
+export const CAMPAIGN_STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  planned: "Planned",
+  in_production: "In production",
+  ready: "Ready",
+  live: "Live",
+};
+
+export const OBJECTIVE_LABELS: Record<string, string> = {
+  awareness: "Awareness",
+  traffic: "Traffic",
+  conversions: "Conversions",
 };
 
 export function fmtStat(card: InspirationCard): string {
