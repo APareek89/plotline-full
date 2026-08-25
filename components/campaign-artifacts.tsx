@@ -130,6 +130,11 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
 
 // ---- artifact routing -------------------------------------------------------
 
+// Which artifacts route to THIS renderer rather than the legacy thread card.
+// It has to list every type the switch below handles: a type present in the
+// switch but absent here never reaches the switch at all, and renders as a
+// placeholder with no actions — which is a dead end at a gate, not a cosmetic
+// gap. Keep the two in step; the test below is what notices if they drift.
 export const CAMPAIGN_ARTIFACT_TYPES: ArtifactType[] = [
   "intake_progress",
   "campaign_option",
@@ -138,6 +143,13 @@ export const CAMPAIGN_ARTIFACT_TYPES: ArtifactType[] = [
   "model_confirm",
   "creative_set",
   "ad_card",
+  // v3 gates
+  "campaign_brief",
+  "hook_rack",
+  "canon_sheet",
+  "keyframe_board",
+  "qc_report",
+  "variant_matrix",
 ];
 
 export function isCampaignArtifact(type: string): boolean {
@@ -1042,6 +1054,8 @@ export function CampaignArtifactCard(props: CampaignArtifactProps) {
       return <KeyframeBoardCard {...props} />;
     case "qc_report":
       return <QCReportCard {...props} />;
+    case "variant_matrix":
+      return <VariantMatrixCard {...props} />;
     case "ad_card":
       return <AdCardCard {...props} />;
     default:
@@ -1485,6 +1499,64 @@ function QCReportCard({ artifact, onAction, busy }: CampaignArtifactProps) {
       )}
 
       <ActionRow artifact={artifact} onAction={onAction} busy={busy} />
+    </div>
+  );
+}
+
+// ---- variant_matrix ---------------------------------------------------------
+// The reuse map. `re-renders 1 of 5` and the two totals are the business case
+// for having a shot board at all, so they are shown rather than inferable.
+
+const LOCALISATION_LIMIT: Record<string, string> = {
+  dub: "audio only; lip-sync drift is visible",
+  revoice: "new VO, captions and lip re-sync",
+  recast: "new talent and environment — a full board re-render",
+};
+
+function VariantMatrixCard({ artifact }: CampaignArtifactProps) {
+  const m = (artifact.payload?.matrix ?? {}) as any;
+  const cells = (m.cells ?? []) as any[];
+  const saved = m.baseline_cost_usd
+    ? Math.round((1 - m.matrix_cost_usd / m.baseline_cost_usd) * 100)
+    : 0;
+
+  return (
+    <div className={CARD}>
+      <p className={LABEL}>Variant matrix</p>
+      <div className="mt-2 space-y-1.5">
+        {cells.map((c) => (
+          <div key={c.variant_id} className={`${TILE} p-2.5`}>
+            <div className="flex items-start justify-between gap-2">
+              <span className="font-mono text-[11.5px] font-bold">{c.variant_id}</span>
+              <MsChip tone="blue">{c.axis}</MsChip>
+            </div>
+            <p className="mt-0.5 text-[12.5px]">{c.delta}</p>
+            {c.hypothesis && (
+              <p className={`mt-0.5 text-[11.5px] italic ${MUTED}`}>{c.hypothesis}</p>
+            )}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <MsChip title="Everything else is reused from the board, not re-rendered">
+                re-renders {c.shots_rerendered?.length ?? 0} of{" "}
+                {(c.shots_rerendered?.length ?? 0) + (c.shots_reused ?? 0)}
+              </MsChip>
+              <MsChip>{price(c.cost_usd ?? 0)}</MsChip>
+              {c.localisation_tier && (
+                <MsChip tone="warn" title={LOCALISATION_LIMIT[c.localisation_tier]}>
+                  {c.localisation_tier}
+                </MsChip>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between border-t border-[var(--ms-line,#2A3140)] pt-2">
+        <span className={`text-[11.5px] ${MUTED}`}>
+          from scratch {price(m.baseline_cost_usd ?? 0)} · derived from the board{" "}
+          {price(m.matrix_cost_usd ?? 0)}
+        </span>
+        <MsChip tone="ok">{saved}% less</MsChip>
+      </div>
     </div>
   );
 }
