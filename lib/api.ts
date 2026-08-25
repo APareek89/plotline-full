@@ -423,12 +423,13 @@ export const api = {
   threads: {
     get: (id: string, afterSeq = 0) => req<Thread>(`/api/threads/${id}?after_seq=${afterSeq}`),
     // §05: both input paths normalize to a UserEvent; same handler server-side
-    sendText: (id: string, text: string, panelFocus?: string | null) =>
+    sendText: (id: string, text: string, panelFocus?: string | null, uploadIds: string[] = []) =>
       req(`/api/threads/${id}/events`, {
         method: "POST",
         body: JSON.stringify({
           thread_id: id, type: "text", text,
           panel_focus: panelFocus ?? null,
+          upload_ids: uploadIds,
         }),
       }),
     sendAction: (id: string, artifactId: string, event: string) =>

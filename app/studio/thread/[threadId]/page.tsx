@@ -193,10 +193,10 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     setBusy(true);
     setDraft("");
     try {
-      const body = [text, uploadIds.length ? `[attached images: ${uploadIds.join(" ")}]` : ""]
-        .filter(Boolean)
-        .join("\n");
-      await api.threads.sendText(threadId, body, panel?.id ?? null);
+      // uploads travel as DATA on the event, not glued into the prose — the
+      // agent used to receive "[attached images: upl_x]" as words and had no
+      // instruction to do anything with it, so attachments were silently lost
+      await api.threads.sendText(threadId, text, panel?.id ?? null, uploadIds);
       await poll();
       return true;
     } catch {
