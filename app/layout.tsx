@@ -9,13 +9,15 @@ export const metadata: Metadata = {
 };
 
 // Addendum-03 §01: exactly three global tabs — Campaign Studio · My Campaigns ·
-// My Brand — and nothing else at global level. My Brand is not listed yet
-// because its screen does not exist; a nav entry that 404s is worse than a
-// missing one. Add it in the same change that adds the page.
+// My Brand — and nothing else at global level. It is listed now because
+// app/brand/page.tsx exists: the rule was never "don't add it", it was "a nav
+// entry that 404s is worse than a missing one", so the entry and the page land
+// in the same change.
 // "+ New campaign" belongs to the studio sub-bar, never to this nav.
 const NAV = [
   { href: "/studio/campaign", label: "Campaign Studio" },
   { href: "/campaigns", label: "My Campaigns" },
+  { href: "/brand", label: "My Brand" },
 ];
 
 // TEMPORARY developer surface, deliberately OUTSIDE the product nav above:
