@@ -1400,13 +1400,30 @@ function BrandModal({
         ...(res.notes ?? []),
         ...(found
           ? []
-          : ["Nothing to confirm yet — fill the Product description and/or upload a Brand Policy Document, then extract again."]),
+          : ["Nothing extracted — the policy document is optional, so add any claims by hand below, or confirm none."]),
       ]);
     } catch (err) {
       setError(`Claim extraction failed: ${(err as Error).message}`);
     } finally {
       setBusy(null);
     }
+  };
+
+  // A claim typed by hand is as confirmable as an extracted one. Without this
+  // a brand with no policy document and a plain product description could
+  // never confirm, and claims_confirmed gates the whole campaign.
+  const addManual = (kind: "claim" | "banned", value: string) => {
+    const text = value.trim();
+    if (!text) return;
+    setAux((a) => {
+      const key = kind === "claim" ? "approved_claims" : "banned_words";
+      const current = a.candidates ?? { approved_claims: [], banned_words: [], notes: [] };
+      if ((current as any)[key].includes(text)) return a;
+      const candidates = { ...current, [key]: [...(current as any)[key], text] };
+      return kind === "claim"
+        ? { ...a, candidates, pickedClaims: { ...a.pickedClaims, [text]: true } }
+        : { ...a, candidates, pickedBanned: { ...a.pickedBanned, [text]: true } };
+    });
   };
 
   const confirmClaims = async () => {
@@ -1696,8 +1713,8 @@ function BrandModal({
           <div>
             <p className="cb-label">Claims — required for this card</p>
             <p className="cb-hint mt-0.5">
-              Extracted from the policy document and the product description. Candidates are never treated as approved
-              until you confirm them.
+              The policy document is optional. Candidates are extracted from it and the product description when present,
+              and you can add claims by hand. Nothing counts as approved until you confirm.
             </p>
           </div>
           <button type="button" className="cb-btn cb-btn-ghost shrink-0" onClick={extractClaims} disabled={!!busy}>
@@ -1718,7 +1735,7 @@ function BrandModal({
           </p>
         )}
 
-        {aux.candidates && (aux.candidates.approved_claims.length > 0 || aux.candidates.banned_words.length > 0) && (
+        {aux.candidates && (
           <>
             <div className="mt-3 grid grid-cols-2 gap-4">
               <ClaimList
@@ -1734,16 +1751,68 @@ function BrandModal({
                 onToggle={(item) => setAux((a) => ({ ...a, pickedBanned: { ...a.pickedBanned, [item]: !a.pickedBanned[item] } }))}
               />
             </div>
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <ManualAdd label="Add an approved claim" placeholder="e.g. Ships with a 5-year warranty"
+                         onAdd={(v) => addManual("claim", v)} />
+              <ManualAdd label="Add a banned word" placeholder="e.g. medical-grade"
+                         onAdd={(v) => addManual("banned", v)} />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <button type="button" className="cb-btn cb-btn-primary" onClick={confirmClaims} disabled={!!busy}>
                 Confirm claims ({pickedCount} selected)
               </button>
               {draft.claims_confirmed && <span className="cb-ok text-[12.5px] font-semibold">✓ confirmed</span>}
+              {pickedCount === 0 && (
+                // Confirming zero is a legitimate answer, not a loophole: with no
+                // approved claim, EVERY persuasion claim is unmapped, so the
+                // council kill-flags it. Say that plainly instead of blocking.
+                <span className="cb-warn text-[12px]">
+                  Confirming none means the campaign may state no claims — the council kill-flags any it finds.
+                </span>
+              )}
             </div>
           </>
         )}
       </div>
     </Modal>
+  );
+}
+
+function ManualAdd({
+  label,
+  placeholder,
+  onAdd,
+}: {
+  label: string;
+  placeholder: string;
+  onAdd: (value: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const commit = () => {
+    onAdd(value);
+    setValue("");
+  };
+  return (
+    <div>
+      <p className="cb-label">{label}</p>
+      <div className="mt-1.5 flex items-center gap-2">
+        <input
+          className="cb-input min-w-0 flex-1"
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            }
+          }}
+        />
+        <button type="button" className="cb-btn cb-btn-ghost shrink-0" onClick={commit} disabled={!value.trim()}>
+          Add
+        </button>
+      </div>
+    </div>
   );
 }
 
