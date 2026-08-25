@@ -141,7 +141,12 @@ export type ArtifactType =
   | "asset_prompt" | "asset_set" | "voice_options" | "post_card"
   // Addendum-03 (Marketing Studio v2)
   | "campaign_option" | "template_picker" | "campaign_detail" | "model_confirm"
-  | "creative_set" | "ad_card" | "intake_progress";
+  | "creative_set" | "ad_card" | "intake_progress"
+  // v3 — mirrors app/schemas.py's ArtifactType. Appended, never reordered: a
+  // renderer switching on a type the server can emit is the only thing standing
+  // between a new gate and a dead end in the browser.
+  | "campaign_brief" | "hook_rack" | "style_block" | "canon_sheet"
+  | "keyframe_board" | "qc_report" | "variant_matrix";
 
 export interface ArtifactAction {
   id: string;

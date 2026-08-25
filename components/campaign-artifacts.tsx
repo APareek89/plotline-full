@@ -1032,6 +1032,16 @@ export function CampaignArtifactCard(props: CampaignArtifactProps) {
       return <ModelConfirmCard {...props} />;
     case "creative_set":
       return <CreativeSetCard {...props} />;
+    case "campaign_brief":
+      return <CampaignBriefCard {...props} />;
+    case "hook_rack":
+      return <HookRackCard {...props} />;
+    case "canon_sheet":
+      return <CanonSheetCard {...props} />;
+    case "keyframe_board":
+      return <KeyframeBoardCard {...props} />;
+    case "qc_report":
+      return <QCReportCard {...props} />;
     case "ad_card":
       return <AdCardCard {...props} />;
     default:
@@ -1043,4 +1053,438 @@ export function CampaignArtifactCard(props: CampaignArtifactProps) {
         </div>
       );
   }
+}
+
+// ---- v3 gates ---------------------------------------------------------------
+// §12: never restate an artifact's content in the agent's text — the card IS the
+// content. Every one of these carries its own actions from the server, so a gate
+// the user cannot act on cannot happen.
+
+// ---- campaign_brief ---------------------------------------------------------
+// Order argues for itself top to bottom, and `single_message` renders largest:
+// if the user reads one line of this card it has to be that one.
+
+function CampaignBriefCard({ artifact, onAction, busy }: CampaignArtifactProps) {
+  const b = (artifact.payload?.brief ?? {}) as any;
+  const row = (label: string, value: React.ReactNode) =>
+    value ? (
+      <div className="mt-2.5">
+        <p className={LABEL}>{label}</p>
+        <div className="mt-1 text-[12.5px] leading-relaxed">{value}</div>
+      </div>
+    ) : null;
+
+  return (
+    <div className={`${CARD} border-l-[3px] border-l-[var(--ms-blue,#4353FF)]`}>
+      <div className="flex items-start justify-between gap-3">
+        <p className={LABEL}>Campaign brief · v{b.version ?? 1}</p>
+        {b.objective && (
+          <MsChip tone="blue" title="Echoed from the campaign card, never re-decided">
+            {b.objective}
+            {b.target_metric ? ` · ${b.target_metric}` : ""}
+          </MsChip>
+        )}
+      </div>
+
+      {b.audience && (
+        <div className="mt-2.5">
+          <p className={LABEL}>Audience</p>
+          <p className="mt-1 text-[12.5px] leading-relaxed">{b.audience}</p>
+          {b.audience_current_belief && (
+            <p className={`mt-1 text-[11.5px] italic ${MUTED}`}>
+              believes now: {b.audience_current_belief}
+            </p>
+          )}
+        </div>
+      )}
+
+      {b.single_message && (
+        <div className={`mt-3 ${TILE} p-3`}>
+          <p className={LABEL}>The one thing they remember</p>
+          <p className="mt-1 text-[17px] font-bold leading-snug">{b.single_message}</p>
+        </div>
+      )}
+
+      {row("Brand's role", b.brand_role)}
+      {row(
+        "Product truth",
+        (b.proof_points ?? []).length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {b.proof_points.map((p: string, i: number) => (
+              <span key={i} className={PILL} title="From the confirmed approved claims">
+                {p}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <MsChip tone="warn" title="No confirmed claim backs this brief — it may make no persuasion claim">
+            no confirmed claims
+          </MsChip>
+        ),
+      )}
+      {row("Offer / CTA", b.offer_cta)}
+      {row(
+        "Format",
+        <div className="flex flex-wrap gap-1.5">
+          {(b.aspect_ratios ?? []).map((r: string) => (
+            <MsChip key={r}>{r}</MsChip>
+          ))}
+          {b.duration_s ? <MsChip>{b.duration_s}s</MsChip> : null}
+          {(b.languages ?? []).map((l: string) => (
+            <MsChip key={l}>{l}</MsChip>
+          ))}
+        </div>,
+      )}
+
+      {((b.mandatories ?? []).length > 0 || (b.guardrails ?? []).length > 0) && (
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <p className={LABEL}>Mandatories</p>
+            <ul className="mt-1 space-y-0.5 text-[12px]">
+              {(b.mandatories ?? []).map((m: string, i: number) => <li key={i}>· {m}</li>)}
+            </ul>
+          </div>
+          <div>
+            <p className={LABEL}>Guardrails</p>
+            <ul className="mt-1 space-y-0.5 text-[12px]">
+              {(b.guardrails ?? []).map((g: string, i: number) => (
+                <li key={i} className="text-[var(--ms-danger-text,#F98F89)]">never {g}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {(b.warnings ?? []).length > 0 && (
+        <div className="mt-3 space-y-1">
+          {b.warnings.map((w: string, i: number) => (
+            <p key={i} className="text-[11.5px] text-[var(--ms-warn-text,#E3B341)]">⚠ {w}</p>
+          ))}
+        </div>
+      )}
+
+      <ActionRow artifact={artifact} onAction={onAction} busy={busy} />
+    </div>
+  );
+}
+
+// ---- hook_rack --------------------------------------------------------------
+// One locked body on top, the hook rack below. The w/s chip is coloured by the
+// verdict the SERVER computed, and a `fail` row shows its proposed fix inline.
+
+function wpsTone(v: string): "ok" | "warn" | "danger" {
+  return v === "pass" ? "ok" : v === "tight" ? "warn" : "danger";
+}
+
+function ScriptLineRow({ line }: { line: any }) {
+  return (
+    <div className="flex items-start gap-3 border-t border-[var(--ms-line,#2A3140)] py-2 first:border-t-0">
+      <span className={`shrink-0 font-mono text-[10.5px] ${MUTED}`}>
+        {line.t_in?.toFixed?.(1)}–{line.t_out?.toFixed?.(1)}s
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] leading-snug">{line.text}</p>
+        <p className={`text-[11px] italic ${MUTED}`}>{line.emotion}</p>
+        {line.wps_verdict === "fail" && line.proposed_fix && (
+          <p className="mt-1 text-[11.5px] text-[var(--ms-warn-text,#E3B341)]">
+            proposed fix: “{line.proposed_fix}”
+          </p>
+        )}
+      </div>
+      <MsChip
+        tone={wpsTone(line.wps_verdict)}
+        title={`${line.words} words in ${(line.t_out - line.t_in).toFixed(1)}s — over the ceiling a line is rushed, clipped, and lip-sync drifts`}
+      >
+        {line.wps} w/s
+      </MsChip>
+    </div>
+  );
+}
+
+function HookRackCard({ artifact, onAction, busy }: CampaignArtifactProps) {
+  const rack = (artifact.payload?.rack ?? {}) as any;
+  const hooks = rack.hooks ?? [];
+  const body = rack.body ?? [];
+
+  return (
+    <div className={CARD}>
+      <div className="flex items-center justify-between gap-3">
+        <p className={LABEL}>Script · {rack.language}</p>
+        <MsChip>{rack.total_duration_s}s</MsChip>
+      </div>
+
+      <div className={`mt-2.5 ${TILE} p-3`}>
+        <p className={LABEL}>Body — locked</p>
+        <p className={`mt-0.5 text-[11px] ${MUTED}`}>
+          A hook swap re-renders one shot, not the film. That only holds while this stays fixed.
+        </p>
+        <div className="mt-1.5">
+          {body.map((l: any) => <ScriptLineRow key={l.slot} line={l} />)}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <p className={LABEL}>Hooks — {hooks.length}</p>
+        <div className="mt-1">
+          {hooks.map((h: any) => (
+            <div
+              key={h.slot}
+              className={
+                h.slot === rack.selected_hook_slot
+                  ? "rounded-md border border-[var(--ms-blue,#4353FF)] px-2"
+                  : "px-2"
+              }
+            >
+              <ScriptLineRow line={h} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {(rack.loanwords_kept ?? []).length > 0 && (
+        <div className="mt-2.5">
+          <p className={LABEL}>Kept in English</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {rack.loanwords_kept.map((w: string) => <MsChip key={w}>{w}</MsChip>)}
+          </div>
+        </div>
+      )}
+
+      <ActionRow artifact={artifact} onAction={onAction} busy={busy} />
+    </div>
+  );
+}
+
+// ---- canon_sheet ------------------------------------------------------------
+// A coverage meter, the locks, the slot cost that feeds lint B3, and — for a
+// product whose geometry mutates — the red at-risk strip.
+
+function CanonSheetCard({ artifact, onAction, busy }: CampaignArtifactProps) {
+  const sheets = (artifact.payload?.sheets ?? []) as any[];
+  return (
+    <div className={CARD}>
+      <p className={LABEL}>Canon · {sheets.length} sheet(s)</p>
+      <p className={`mt-0.5 text-[11px] ${MUTED}`}>
+        Reusable across every future campaign — campaign two is cheaper because these exist.
+      </p>
+      <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+        {sheets.map((s) => {
+          const views = Object.keys(s.coverage ?? {});
+          const have = views.filter((v) => s.coverage[v]).length;
+          return (
+            <div key={s.id} className={`${TILE} p-3`}>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-mono text-[11.5px] font-bold text-[var(--ms-blue-text,#A3AEFF)]">
+                  {s.id}
+                </p>
+                <MsChip>{s.kind}</MsChip>
+              </div>
+              <p className="mt-1 text-[12.5px]">{s.brief}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <MsChip tone={views.length && have === views.length ? "ok" : "warn"}>
+                  {have}/{views.length || "—"} views
+                </MsChip>
+                <MsChip title="Reference slots this sheet consumes on a generation call (lint B3)">
+                  {s.slot_cost} slot
+                </MsChip>
+                <MsChip tone={s.rights === "unverified" ? "danger" : "ok"}>{s.rights}</MsChip>
+              </div>
+              {(s.locks ?? []).length > 0 && (
+                <p className={`mt-1.5 text-[11px] ${MUTED}`}>locks: {s.locks.join(" · ")}</p>
+              )}
+              {(s.risk_notes ?? []).length > 0 && (
+                <p className="mt-1.5 border-l-2 border-[var(--ms-danger,#E5312B)] pl-2 text-[11px] text-[var(--ms-danger-text,#F98F89)]">
+                  geometry risk: {s.risk_notes.join(", ")}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <ActionRow artifact={artifact} onAction={onAction} busy={busy} />
+    </div>
+  );
+}
+
+// ---- keyframe_board ---------------------------------------------------------
+// The hard gate. The Approve pill stays disabled until every frame is approved —
+// animating an unapproved frame is the mistake the whole cost ladder prevents.
+
+const CHECK_LABEL: Record<string, string> = {
+  face: "face",
+  hands: "hands",
+  product_geometry: "geometry",
+  label_legibility: "label",
+  composition: "comp",
+  safe_area: "safe",
+};
+
+function KeyframeBoardCard({ artifact, onAction, busy }: CampaignArtifactProps) {
+  const board = (artifact.payload?.board ?? {}) as any;
+  const frames = (board.frames ?? []) as any[];
+  const approved = frames.filter((f) => f.approved).length;
+
+  return (
+    <div className={CARD}>
+      <div className="flex items-center justify-between gap-3">
+        <p className={LABEL}>Keyframes · {approved}/{frames.length} approved</p>
+        <MsChip tone={board.all_approved ? "ok" : "warn"}>
+          {price(board.total_cost_usd ?? 0)}
+        </MsChip>
+      </div>
+      <p className={`mt-0.5 text-[11px] ${MUTED}`}>
+        No video is generated until every frame is approved. A still costs a fraction of the
+        motion it protects.
+      </p>
+
+      <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
+        {frames.map((f) => (
+          <div key={f.shot_slot} className={`${TILE} overflow-hidden`}>
+            {f.asset_id ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={media(`/api/assets/${f.asset_id}/file`)}
+                alt={f.shot_slot}
+                className="aspect-[9/16] w-full object-cover"
+              />
+            ) : (
+              <div className={`flex aspect-[9/16] items-center justify-center text-[11px] ${MUTED}`}>
+                not rendered
+              </div>
+            )}
+            <div className="p-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10.5px]">{f.shot_slot}</span>
+                <MsChip tone={f.approved ? "ok" : "warn"}>
+                  {f.approved ? "approved" : "pending"}
+                </MsChip>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {Object.entries(f.checks ?? {}).map(([k, v]) => (
+                  <span
+                    key={k}
+                    title={`${CHECK_LABEL[k] ?? k}: ${v}`}
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      v === "pass"
+                        ? "bg-[var(--ms-ok,#3FB950)]"
+                        : v === "fail"
+                          ? "bg-[var(--ms-danger,#E5312B)]"
+                          : "bg-[var(--ms-line-strong,#6B7589)]"
+                    }`}
+                  />
+                ))}
+              </div>
+              {(f.repairs ?? []).length > 0 && (
+                <p className={`mt-1 text-[10.5px] ${MUTED}`}>repaired: {f.repairs.join("; ")}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className={`mt-2 text-[10.5px] ${MUTED}`}>
+        A grey dot is a check that has not run — it is not a check that passed.
+      </p>
+      <ActionRow artifact={artifact} onAction={onAction} busy={busy} />
+    </div>
+  );
+}
+
+// ---- qc_report --------------------------------------------------------------
+// Three tiers, blocking expanded. An accepted defect renders its rationale
+// inline: without a visible reason it looks like negligence.
+
+const TIER_TONE: Record<string, "danger" | "warn" | "neutral"> = {
+  blocking: "danger",
+  fix_before_ship: "warn",
+  accepted: "neutral",
+};
+const TIER_LABEL: Record<string, string> = {
+  blocking: "Blocking",
+  fix_before_ship: "Fix before ship",
+  accepted: "Accepted",
+};
+
+function QCReportCard({ artifact, onAction, busy }: CampaignArtifactProps) {
+  const report = (artifact.payload?.report ?? {}) as any;
+  const findings = (report.findings ?? []) as any[];
+  const automated = Object.entries(report.automated ?? {}) as [string, string][];
+
+  return (
+    <div
+      className={`${CARD} border-l-[3px] ${
+        report.verdict === "held"
+          ? "border-l-[var(--ms-danger,#E5312B)]"
+          : "border-l-[var(--ms-ok,#3FB950)]"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className={LABEL}>Quality check</p>
+        <MsChip tone={report.verdict === "held" ? "danger" : "ok"}>{report.verdict}</MsChip>
+      </div>
+
+      {(["blocking", "fix_before_ship", "accepted"] as const).map((tier) => {
+        const rows = findings.filter((f) => f.tier === tier);
+        if (!rows.length) return null;
+        return (
+          <div key={tier} className="mt-2.5">
+            <p className={LABEL}>
+              {TIER_LABEL[tier]} · {rows.length}
+            </p>
+            <div className="mt-1 space-y-1.5">
+              {rows.map((f, i) => (
+                <div key={i} className={`${TILE} p-2.5`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[12.5px] font-semibold">{f.check}</p>
+                    <MsChip tone={TIER_TONE[tier]}>{tier.replace(/_/g, " ")}</MsChip>
+                  </div>
+                  <p className={`mt-0.5 text-[12px] ${MUTED}`}>{f.detail}</p>
+                  {f.resolution && (
+                    <p className="mt-1 text-[11.5px]">→ {f.resolution}</p>
+                  )}
+                  {f.rationale && (
+                    <p className={`mt-1 text-[11.5px] italic ${MUTED}`}>
+                      accepted because: {f.rationale}
+                    </p>
+                  )}
+                  {f.locator && (
+                    <p className={`mt-1 font-mono text-[10.5px] ${MUTED}`}>{f.locator}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {automated.length > 0 && (
+        <div className="mt-3">
+          <p className={LABEL}>Automated detectors</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {automated.map(([name, state]) => (
+              <MsChip
+                key={name}
+                tone={state === "pass" ? "ok" : state === "fail" ? "danger" : "neutral"}
+                title={state === "skip" ? "not wired yet — this is not a pass" : undefined}
+              >
+                {name.replace(/_/g, " ")}: {state}
+              </MsChip>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {Object.keys(report.locales ?? {}).length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {Object.entries(report.locales).map(([loc, v]) => (
+            <MsChip key={loc} tone={v === "cleared" ? "ok" : "danger"}>
+              {loc}: {String(v)}
+            </MsChip>
+          ))}
+        </div>
+      )}
+
+      <ActionRow artifact={artifact} onAction={onAction} busy={busy} />
+    </div>
+  );
 }
