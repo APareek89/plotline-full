@@ -404,6 +404,7 @@ export type AgentRun = {
   tool_calls: { tool: string; input: unknown; result_count?: number }[];
   cited_source_ids: string[];
   thread_id: string | null;
+  campaign_name: string | null;
   node_input: unknown;
   node_output: unknown;
   started_at: number;
@@ -411,6 +412,10 @@ export type AgentRun = {
 
 export const api = {
   health: () => req<any>("/health"),
+  // TEMPORARY debug surface — structured node input/output across ALL runs.
+  // Dev-only server-side (MOCK_LLM or PLOTLINE_DEBUG_OBSERVABILITY).
+  agentRuns: (limit = 200) =>
+    req<{ runs: AgentRun[] }>(`/api/agent-runs?limit=${limit}`),
   profile: {
     get: () => req<any>("/api/profile"),
     put: (data: any) => req<any>("/api/profile", { method: "PUT", body: JSON.stringify(data) }),
@@ -437,10 +442,6 @@ export const api = {
     activity: (id: string, artifactId: string) =>
       req<ActivityEntry[]>(`/api/threads/${id}/artifacts/${artifactId}/activity`),
     // thread-scoped, not artifact-scoped — one log covers every asset in the run
-    // TEMPORARY debug surface — structured node input/output per thread.
-    // Dev-only server-side; the tab that calls it is hidden in production.
-    agentRuns: (id: string) =>
-      req<{ thread_id: string; runs: AgentRun[] }>(`/api/threads/${id}/agent-runs`),
     generationLog: (id: string) =>
       req<GenerationLogEntry[]>(`/api/threads/${id}/generation-log`),
   },

@@ -18,6 +18,12 @@ const NAV = [
   { href: "/campaigns", label: "My Campaigns" },
 ];
 
+// TEMPORARY developer surface, deliberately OUTSIDE the product nav above:
+// it is not a fourth tab of the app, it is a debug view that happens to live in
+// the same shell. Next inlines NODE_ENV at build time, so this whole entry is
+// dropped from a production bundle. Delete it and app/observability/ to remove.
+const DEBUG_NAV = process.env.NODE_ENV !== "production";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -51,6 +57,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </Link>
               ))}
             </nav>
+            {DEBUG_NAV && (
+              <Link
+                href="/observability"
+                className="mono rounded-[10px] border border-dashed border-[#2A3140] px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-accent-deep"
+                title="Debug — agent node inputs and outputs. Not part of the product."
+              >
+                Observability
+              </Link>
+            )}
 
           </div>
         </header>
