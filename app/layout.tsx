@@ -8,22 +8,14 @@ export const metadata: Metadata = {
     "Name a campaign, brief it once, and get evidence-backed options, scripts, creative and ad cards in one thread.",
 };
 
-// v2 §APP STRUCTURE: the primary nav for this mode is exactly two entries.
+// Addendum-03 §01: exactly three global tabs — Campaign Studio · My Campaigns ·
+// My Brand — and nothing else at global level. My Brand is not listed yet
+// because its screen does not exist; a nav entry that 404s is worse than a
+// missing one. Add it in the same change that adds the page.
+// "+ New campaign" belongs to the studio sub-bar, never to this nav.
 const NAV = [
   { href: "/studio/campaign", label: "Campaign Studio" },
   { href: "/campaigns", label: "My Campaigns" },
-];
-
-// The Phase-1 screens are still built, still routed, still working — they are
-// just no longer the product. They live one click away instead of in the top
-// row. Every href below is a real page in this app; nothing here is aspirational.
-const LEGACY = [
-  { href: "/", label: "Home" },
-  { href: "/studio", label: "Content Studio" },
-  { href: "/creative", label: "Creative Studio" },
-  { href: "/plans", label: "Plans" },
-  { href: "/space", label: "My Space" },
-  { href: "/avatar", label: "Avatar Studio", phase2: true },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -60,30 +52,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               ))}
             </nav>
 
-            {/* Zero-JS disclosure so the root layout stays a server component. */}
-            <details className="group relative ml-auto text-[13.5px]">
-              <summary className="cursor-pointer list-none rounded-[12px] px-3 py-1.5 text-muted transition-colors hover:bg-principle-wash [&::-webkit-details-marker]:hidden">
-                Legacy
-                <span className="ml-1.5 text-[10px] group-open:hidden">▾</span>
-                <span className="ml-1.5 hidden text-[10px] group-open:inline">▴</span>
-              </summary>
-              <div className="card absolute right-0 top-full mt-2 w-56 p-1 shadow-lg">
-                {LEGACY.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="flex items-center justify-between rounded-[12px] px-3 py-1.5 text-ink-soft transition-colors hover:bg-accent-wash hover:text-accent-deep"
-                  >
-                    {item.label}
-                    {item.phase2 && (
-                      <span className="rounded-[8px] bg-principle-wash px-1.5 py-0.5 text-[10px] font-semibold text-principle">
-                        PHASE 2
-                      </span>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </details>
           </div>
         </header>
         <main className="w-full">{children}</main>

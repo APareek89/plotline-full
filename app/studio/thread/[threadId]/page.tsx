@@ -124,17 +124,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
 
   // ---- rail data ----
   useEffect(() => {
-    if (msMode) {
-      api.campaigns.list().then(setCampaignList).catch(() => setCampaignList([]));
-      return;
-    }
-    api.series.list().then(async (list) => {
-      setSeriesList(list);
-      const entries = await Promise.all(
-        list.slice(0, 12).map(async (s) => [s.id, await api.series.threads(s.id).catch(() => [])] as const)
-      );
-      setThreadsBySeries(Object.fromEntries(entries));
-    }).catch(() => {});
+    api.campaigns.list().then(setCampaignList).catch(() => setCampaignList([]));
   }, [threadId]);
 
   // ---- deep link: ?artifact= restores the open panel (§02) ----
@@ -224,24 +214,6 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     }
     if (event === "regenerate" && !confirm(`Regenerate ${artifactId}? This overwrites the current concept.`)) {
       return; // §04: destructive confirm — approvals never get one
-    }
-    if (event === "edit_context") {
-      router.push(`/studio?edit=${thread?.series_id}`);
-      return;
-    }
-    if (event === "produce") {
-      // Addendum-02 §01: concept card → Creative Studio per-post thread
-      setBusy(true);
-      try {
-        const res = await fetch(`${API_URL}/api/series/${thread?.series_id}/concepts/${artifactId}/produce`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ option: "A" }),
-        }).then((r) => r.json());
-        if (res.thread?.id) router.push(`/studio/thread/${res.thread.id}`);
-      } finally {
-        setBusy(false);
-      }
-      return;
     }
     setBusy(true);
     try {

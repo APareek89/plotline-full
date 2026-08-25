@@ -21,7 +21,6 @@ import {
   PLATFORM_LABELS,
   api,
 } from "@/lib/api";
-import { ConceptCard } from "./concept-card";
 import { CoverageChip, ProvisionalBadge } from "./thread-artifacts";
 import { CampaignArtifactCard, MsChip, isCampaignArtifact } from "./campaign-artifacts";
 
@@ -150,9 +149,6 @@ export function ArtifactPanel({
   }, [ms, tab, threadId, artifact.id]);
 
   const p = artifact.payload ?? {};
-  const isConcept = artifact.type === "concept";
-  const concept: Concept | null = isConcept ? p.concept : null;
-  const verdict: ConceptVerdict | null = isConcept ? p.verdict : null;
 
   const ctx = campaign?.context;
   const spend = (campaign?.ad_cards ?? []).reduce(
@@ -177,9 +173,7 @@ export function ArtifactPanel({
           ? "Context"
           : artifact.type === "plan"
             ? "Plan"
-            : artifact.type === "concept"
-              ? "Concept"
-              : "Details";
+            : "Details";
 
   return (
     <aside
@@ -439,42 +433,6 @@ export function ArtifactPanel({
                     : "not confirmed"
                 }
               />
-            </div>
-          </>
-        ) : isConcept && concept ? (
-          <>
-            {/* full CCF card exactly as specced in v1 §3.8 */}
-            <ConceptCard
-              concept={concept}
-              verdict={verdict ?? undefined}
-              options={p.options?.options}
-              state={{
-                series_id: seriesId, concept_id: concept.id,
-                status: approved ? "approved" : (p.status ?? "qualified"),
-                ccs: p.ccs, order_idx: 0, regen_count: 0,
-                approved: approved ? 1 : 0,
-              }}
-              objective={objective}
-              onApprove={() => onAction(artifact.id, "approve")}
-              onUnapprove={() => onAction(artifact.id, "approve")}
-              onRegenerate={(note) => onAction(artifact.id, `regenerate:${note}`)}
-              busy={busy}
-            />
-            <div className="mt-3">
-              <MetaRow label="CCS" value={`${p.ccs} · ${(approved ? "approved" : p.status ?? "").toUpperCase()}`} />
-              <MetaRow
-                label="Evidence coverage"
-                value={
-                  <span className="inline-flex items-center gap-1.5">
-                    <CoverageChip pct={p.coverage} />
-                    {p.provisional && <ProvisionalBadge />}
-                  </span>
-                }
-              />
-              <MetaRow label="Slot" value={concept.slot_date ?? "—"} />
-              <MetaRow label="Format" value={concept.format.replace(/_/g, " ")} />
-              <MetaRow label="Platform" value={PLATFORM_LABELS[concept.platform] ?? concept.platform} />
-              <MetaRow label="Status" value={approved ? "Approved" : p.status} />
             </div>
           </>
         ) : (

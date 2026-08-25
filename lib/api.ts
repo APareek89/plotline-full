@@ -398,36 +398,6 @@ export const api = {
     get: () => req<any>("/api/profile"),
     put: (data: any) => req<any>("/api/profile", { method: "PUT", body: JSON.stringify(data) }),
   },
-  series: {
-    list: () => req<Series[]>("/api/series"),
-    get: (id: string) => req<Series>(`/api/series/${id}`),
-    create: (form: any, uploadIds: string[]) =>
-      req<{ id: string; context: any; thread?: Thread }>("/api/series", {
-        method: "POST",
-        body: JSON.stringify({ form, upload_ids: uploadIds }),
-      }),
-    threads: (id: string) => req<Thread[]>(`/api/series/${id}/threads`),
-    inspiration: (id: string) =>
-      req<{ sample_data: boolean; selection_enabled: boolean; cards: InspirationCard[] }>(
-        `/api/series/${id}/inspiration`
-      ),
-    generate: (id: string) =>
-      req<{ run_id: string }>(`/api/series/${id}/generate`, { method: "POST" }),
-    approve: (id: string, conceptId: string) =>
-      req(`/api/series/${id}/concepts/${conceptId}/approve`, { method: "POST" }),
-    unapprove: (id: string, conceptId: string) =>
-      req(`/api/series/${id}/concepts/${conceptId}/unapprove`, { method: "POST" }),
-    regenerate: (id: string, conceptId: string, feedback: string) =>
-      req<{ run_id: string }>(`/api/series/${id}/concepts/${conceptId}/regenerate`, {
-        method: "POST",
-        body: JSON.stringify({ feedback }),
-      }),
-    reorder: (id: string, orderedIds: string[]) =>
-      req(`/api/series/${id}/reorder`, {
-        method: "POST",
-        body: JSON.stringify({ ordered_ids: orderedIds }),
-      }),
-  },
   threads: {
     get: (id: string, afterSeq = 0) => req<Thread>(`/api/threads/${id}?after_seq=${afterSeq}`),
     // §05: both input paths normalize to a UserEvent; same handler server-side

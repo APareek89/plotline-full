@@ -95,31 +95,6 @@ export function ArtifactCard({
     );
   }
 
-  if (artifact.type === "inspiration_set") {
-    const cards = (p.cards ?? []).slice(0, 6);
-    return (
-      <div className="card p-4">
-        <div className="flex items-center justify-between">
-          <p className="field-label">Reference set</p>
-          {p.sample_data && (
-            <span className="chip !border-dashed" title="Curated sample corpus — selection disabled until the inspiration pipeline ships">
-              sample data — pipeline pending
-            </span>
-          )}
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          {cards.map((c: any) => (
-            <div key={c.source_id} className="rounded-[12px] border border-line bg-paper p-2.5">
-              <p className="text-[12px] font-semibold leading-snug">{c.title}</p>
-              <p className="mono mt-0.5 text-[10.5px] text-muted">
-                {fmtStat(c)} · {c.source_id}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   if (artifact.type === "format_options") {
     return (
@@ -357,7 +332,7 @@ export function ArtifactCard({
         ))}
         <p className="mt-1.5 text-[11.5px] text-muted">{(pc.hashtags ?? []).join(" ")} · CTA: {pc.cta}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <a className="btn btn-primary !px-3 !py-1" href={`${API_URL}/api/post-cards/${p.id}/bundle`}>
+          <a className="btn btn-primary !px-3 !py-1" href={`${API_URL}/api/ad-cards/${p.id}/bundle`}>
             Download bundle
           </a>
           {p.status !== "posted" && (
