@@ -695,7 +695,7 @@ const OBJECTIVES: { id: CampaignObjective; label: string; hint: string }[] = [
   { id: "conversions", label: "Conversions", hint: "purchases / signups — persuasion & proof carries weight" },
 ];
 const PLATFORM_IDS = Object.keys(PLATFORM_LABELS);
-const MIN_IMAGES = 3;
+const MIN_IMAGES = 1;   // one pack shot is enough to lock consistency; more is better, not required
 const MAX_IMAGES = 8;
 
 type UploadMeta = { id: string; filename: string; preview?: string };
@@ -805,7 +805,8 @@ export function CampaignDetailCards({
   // Saved-but-unconfirmed is its own state on the Brand tile: a green ✓ there
   // would claim an approval the user never gave.
   const complete = cardsComplete(context, cardsDone);
-  const claimsPending = cardsDone.brand && !complete.brand;
+  // saved, but with nothing approved — a note, not a blocker
+  const claimsPending = cardsDone.brand && !context?.brand?.claims_confirmed;
   const brandLogo = context?.brand?.logo_upload_id ? uploads[context.brand.logo_upload_id] : undefined;
 
   return (
@@ -819,7 +820,7 @@ export function CampaignDetailCards({
           index={1}
           title="Product Details"
           done={complete.product}
-          required="name · description · 3–8 images"
+          required="name · description · at least 1 image"
           onOpen={() => setOpen("product")}
           summary={
             context?.product ? (
@@ -890,8 +891,8 @@ export function CampaignDetailCards({
           index={3}
           title="Brand Details"
           done={complete.brand}
-          pending={claimsPending ? "saved · claims not confirmed" : null}
-          required="palette · font · logo · confirmed claims"
+          pending={claimsPending ? "saved · no approved claims" : null}
+          required="palette · font · logo"
           onOpen={() => setOpen("brand")}
           summary={
             context?.brand ? (
@@ -927,8 +928,8 @@ export function CampaignDetailCards({
 
       {claimsPending && (
         <p className="cb-warn mt-2 text-[12px]">
-          The Brand card stays incomplete until the claim candidates are confirmed — unconfirmed claims are never treated
-          as approved.
+          No approved claims yet — the campaign can run, but it may not state a claim. Confirm claims in the Brand card to
+          allow specific ones; anything unconfirmed is kill-flagged by the council.
         </p>
       )}
 
@@ -1037,7 +1038,7 @@ function ProductModal({
     description: !draft.description.trim() ? "Description is required — the claims extractor reads it." : null,
     images:
       count < MIN_IMAGES
-        ? `${MIN_IMAGES}–${MAX_IMAGES} images required — ${count} attached. They become the product pack the generator locks onto.`
+        ? `At least ${MIN_IMAGES} image required (up to ${MAX_IMAGES}) — ${count} attached. They become the product pack the generator locks onto.`
         : null,
   };
   const valid = !errors.name && !errors.description && !errors.images;
@@ -1086,7 +1087,7 @@ function ProductModal({
   return (
     <Modal
       title="Product Details"
-      subtitle="Name, description and the 3–8 shots that become the product pack."
+      subtitle="Name, description and at least one shot for the product pack (up to 8)."
       onClose={onClose}
       footer={
         <>
@@ -1711,7 +1712,7 @@ function BrandModal({
       <div className="cb-elev rounded-[12px] p-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="cb-label">Claims — required for this card</p>
+            <p className="cb-label">Claims — optional, but nothing may be claimed without them</p>
             <p className="cb-hint mt-0.5">
               The policy document is optional. Candidates are extracted from it and the product description when present,
               and you can add claims by hand. Nothing counts as approved until you confirm.
@@ -1861,11 +1862,12 @@ function ClaimList({
 // button that lights up only to come back 422 teaches the user nothing.
 
 export function cardsComplete(context: CampaignContext | null, cardsDone: CardsDone): CardsDone {
-  return {
-    product: cardsDone.product,
-    campaign: cardsDone.campaign,
-    brand: cardsDone.brand && !!context?.brand?.claims_confirmed,
-  };
+  // Confirming claims GRANTS permission to make them; it is not a toll on
+  // starting. An unconfirmed brand simply has no approved claims, so any claim
+  // the detail tries to use is unmapped and gets rejected server-side. Mirror
+  // the server's cards_done exactly — a second, stricter gate here is how the
+  // Brand card became impossible to finish for brands with nothing quotable.
+  return { ...cardsDone };
 }
 
 /** What Start campaign is still waiting on, in the user's words. */
@@ -1874,7 +1876,7 @@ export function missingLabels(context: CampaignContext | null, cardsDone: CardsD
   const out: string[] = [];
   if (!done.product) out.push("Product Details");
   if (!done.campaign) out.push("Campaign Details");
-  if (!done.brand) out.push(cardsDone.brand ? "Brand Details — confirm the claims" : "Brand Details");
+  if (!done.brand) out.push("Brand Details");
   return out;
 }
 
