@@ -392,6 +392,23 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export type AgentRun = {
+  run_id: string;
+  agent: string;
+  model: string;
+  prompt_version: string;
+  mock: boolean;
+  attempts: number;
+  duration_s: number;
+  validation_errors: string[];
+  tool_calls: { tool: string; input: unknown; result_count?: number }[];
+  cited_source_ids: string[];
+  thread_id: string | null;
+  node_input: unknown;
+  node_output: unknown;
+  started_at: number;
+};
+
 export const api = {
   health: () => req<any>("/health"),
   profile: {
@@ -420,6 +437,10 @@ export const api = {
     activity: (id: string, artifactId: string) =>
       req<ActivityEntry[]>(`/api/threads/${id}/artifacts/${artifactId}/activity`),
     // thread-scoped, not artifact-scoped — one log covers every asset in the run
+    // TEMPORARY debug surface — structured node input/output per thread.
+    // Dev-only server-side; the tab that calls it is hidden in production.
+    agentRuns: (id: string) =>
+      req<{ thread_id: string; runs: AgentRun[] }>(`/api/threads/${id}/agent-runs`),
     generationLog: (id: string) =>
       req<GenerationLogEntry[]>(`/api/threads/${id}/generation-log`),
   },

@@ -137,6 +137,21 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     return map;
   }, [messages]);
 
+  // WHICH message still OWNS each artifact id. A card like the intake-progress
+  // tile is re-posted on every turn; rendering all of them stacks four
+  // near-identical tiles in the transcript and buries the one line the user
+  // actually has to read. Only the newest instance is live — the older ones are
+  // superseded, not history, so they are not drawn. Nothing is deleted: the
+  // messages are all still in the thread and the panel still resolves by id.
+  const liveArtifactOwner = useMemo(() => {
+    const owner = new Map<string, string>();
+    for (const m of messages) {
+      if (m.role !== "agent") continue;
+      for (const a of (m.envelope as AgentMessage).artifacts ?? []) owner.set(a.id, m.id);
+    }
+    return owner;
+  }, [messages]);
+
   useEffect(() => {
     const target = search.get("artifact");
     if (target && !panel && allArtifacts.has(target)) setPanel(allArtifacts.get(target)!);
@@ -399,7 +414,9 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
                       {(m.envelope as AgentMessage).text}
                     </p>
                   )}
-                  {((m.envelope as AgentMessage).artifacts ?? []).map((a) =>
+                  {((m.envelope as AgentMessage).artifacts ?? [])
+                    .filter((a) => liveArtifactOwner.get(a.id) === m.id)
+                    .map((a) =>
                     isCampaignArtifact(a.type) ? (
                       <CampaignArtifactCard
                         key={`${m.id}-${a.id}`}

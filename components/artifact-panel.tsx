@@ -11,6 +11,7 @@ import Link from "next/link";
 import {
   ActivityEntry,
   AgentMessage,
+  AgentRun,
   ArtifactEnvelope,
   CampaignRecord,
   Concept,
@@ -23,6 +24,12 @@ import {
 } from "@/lib/api";
 import { CoverageChip, ProvisionalBadge } from "./thread-artifacts";
 import { CampaignArtifactCard, MsChip, isCampaignArtifact } from "./campaign-artifacts";
+
+type PanelTab = "artifact" | "activity" | "creative" | "nodes";
+
+// Local-only: Next inlines NODE_ENV at build time, so this is false in a
+// production bundle and the whole tab tree is dropped.
+const DEBUG_NODES = process.env.NODE_ENV !== "production";
 
 function MetaRow({
   label,
@@ -81,7 +88,11 @@ export function ArtifactPanel({
   onAction: (artifactId: string, event: string) => void;
 }) {
   const ms = isCampaignArtifact(artifact.type);
-  const [tab, setTab] = useState<"artifact" | "activity" | "creative">("artifact");
+  const [tab, setTab] = useState<PanelTab>("artifact");
+  // TEMPORARY debug tab. Dev-only: it renders full prompts and payloads, so it
+  // must not exist in a production bundle. Remove with the DEBUG_NODES const.
+  const [runs, setRuns] = useState<AgentRun[] | null>(null);
+  const [openRun, setOpenRun] = useState<string | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [genLog, setGenLog] = useState<GenerationLogEntry[]>([]);
   const [menu, setMenu] = useState(false);
@@ -130,6 +141,12 @@ export function ArtifactPanel({
     api.campaigns.get(seriesId).then(setCampaign).catch(() => setCampaign(null));
   }, [ms, seriesId, artifact.id]);
 
+  // Nodes (debug) = the structured input/output of every agent that ran here
+  useEffect(() => {
+    if (!DEBUG_NODES || tab !== "nodes") return;
+    api.threads.agentRuns(threadId).then((r) => setRuns(r.runs)).catch(() => setRuns([]));
+  }, [tab, threadId]);
+
   // Creative tab = every generated output in this thread, not just the open card
   useEffect(() => {
     if (!ms || tab !== "creative") return;
@@ -161,11 +178,13 @@ export function ArtifactPanel({
     ms ? "border-[var(--ms-line,#2A3140)] bg-[var(--ms-elev,#1E242E)]" : "border-line bg-paper"
   }`;
 
-  const tabs: ("artifact" | "activity" | "creative")[] = ms
-    ? ["artifact", "creative"]
-    : ["artifact", "activity"];
+  const tabs: PanelTab[] = ms
+    ? (DEBUG_NODES ? ["artifact", "creative", "nodes"] : ["artifact", "creative"])
+    : (DEBUG_NODES ? ["artifact", "activity", "nodes"] : ["artifact", "activity"]);
   const tabLabel = (t: string) =>
-    t === "creative"
+    t === "nodes"
+      ? "Nodes ·debug"
+      : t === "creative"
       ? "Creative"
       : t === "activity"
         ? "Activity"
@@ -285,7 +304,9 @@ export function ArtifactPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {tab === "activity" ? (
+        {tab === "nodes" ? (
+          <NodesDebug runs={runs} open={openRun} setOpen={setOpenRun} logCard={logCard} soft={softText} />
+        ) : tab === "activity" ? (
           <>
             {ms && (
               <div className="mb-2 flex items-center justify-between">
@@ -442,5 +463,107 @@ export function ArtifactPanel({
         )}
       </div>
     </aside>
+  );
+}
+
+
+/* ------------------------------------------------------------------ debug --
+ * TEMPORARY. Structured input/output for every agent node that ran on this
+ * thread — what it was asked, what it decided, which tools it called, how many
+ * validation retries it burned. Dev-only (see DEBUG_NODES); delete this whole
+ * block and the "nodes" tab when it has served its purpose.
+ * ------------------------------------------------------------------------- */
+function NodesDebug({
+  runs,
+  open,
+  setOpen,
+  logCard,
+  soft,
+}: {
+  runs: AgentRun[] | null;
+  open: string | null;
+  setOpen: (v: string | null) => void;
+  logCard: string;
+  soft: string;
+}) {
+  if (runs === null) return <p className={`text-[13px] ${soft}`}>Loading node runs…</p>;
+  if (!runs.length)
+    return (
+      <p className={`text-[13px] ${soft}`}>
+        No node runs recorded for this thread yet. Runs are captured from the moment an agent
+        turn starts — older threads predate the capture.
+      </p>
+    );
+
+  return (
+    <div className="space-y-2">
+      <p className={`text-[12px] ${soft}`}>
+        {runs.length} node run{runs.length === 1 ? "" : "s"} · newest last. Debug view — not shown in production.
+      </p>
+      {runs.map((r) => {
+        const isOpen = open === r.run_id;
+        const failed = (r.validation_errors ?? []).length > 0;
+        return (
+          <div key={r.run_id} className={logCard}>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 text-left"
+              onClick={() => setOpen(isOpen ? null : r.run_id)}
+            >
+              <span className="min-w-0">
+                <span className="mono text-[12.5px] font-semibold">{r.agent}</span>
+                <span className={`ml-2 text-[11.5px] ${soft}`}>
+                  {r.duration_s}s · {r.attempts} attempt{r.attempts === 1 ? "" : "s"}
+                  {r.mock ? " · mock" : ""}
+                  {failed ? ` · ${r.validation_errors.length} retry error(s)` : ""}
+                </span>
+              </span>
+              <span className={`text-[11px] ${soft}`}>{isOpen ? "▴" : "▾"}</span>
+            </button>
+
+            {isOpen && (
+              <div className="mt-2 space-y-2">
+                <NodeMeta label="prompt" value={`${r.prompt_version}`} soft={soft} />
+                <NodeMeta label="model" value={r.model} soft={soft} />
+                {!!(r.cited_source_ids ?? []).length && (
+                  <NodeMeta label="cited" value={r.cited_source_ids.join(", ")} soft={soft} />
+                )}
+                {!!(r.tool_calls ?? []).length && (
+                  <NodeBlock title={`tool calls (${r.tool_calls.length})`} soft={soft}
+                    body={r.tool_calls.map((t) => `${t.tool} → ${t.result_count ?? "?"} result(s)\n${JSON.stringify(t.input)}`).join("\n\n")} />
+                )}
+                {failed && (
+                  <NodeBlock title="validation errors (each one cost a retry)" soft={soft}
+                    body={r.validation_errors.join("\n\n")} />
+                )}
+                <NodeBlock title="input" soft={soft} body={JSON.stringify(r.node_input, null, 2)} />
+                <NodeBlock title="output" soft={soft} body={JSON.stringify(r.node_output, null, 2)} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function NodeMeta({ label, value, soft }: { label: string; value: string; soft: string }) {
+  return (
+    <p className={`text-[12px] ${soft}`}>
+      <span className="mono uppercase tracking-[0.1em]">{label}</span> · {value}
+    </p>
+  );
+}
+
+function NodeBlock({ title, body, soft }: { title: string; body: string; soft: string }) {
+  return (
+    <details className="rounded-[10px] border border-[var(--ms-line,#2A3140)] p-2">
+      <summary className={`mono cursor-pointer text-[11px] uppercase tracking-[0.1em] ${soft}`}>
+        {title}
+      </summary>
+      <pre className="mt-2 max-h-[320px] overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed">
+        {body}
+      </pre>
+    </details>
   );
 }
