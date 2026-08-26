@@ -74,23 +74,41 @@
   --ms-text-2: #A6B0C0;
   --ms-blue: #4353FF;
   --ms-blue-hover: #5A6AFF;
-  --ms-ok: #39C36A;
-  --ms-warn: #E8A13C;
-  --ms-danger: #E5312B;
+
+  /* ── BLUE AND WHITE ONLY (owner decision 2026-08-26) ──────────────────
+     Green, amber and red are gone as HUES. The status roles are kept as
+     tokens rather than deleted, because ~40 components ask for them by name
+     and re-pointing each one is how a stray green survives in a corner.
+
+     Status now reads by WEIGHT and CONTRAST instead of colour:
+       ok      → the blue accent, same as any other affirmative
+       warn    → plain secondary text; it is a note, not an alarm
+       danger  → INVERTED, white fill under dark type. Nothing else on a
+                 dark screen is a solid white block, so a blocking finding
+                 is still the loudest thing in the view — louder than red
+                 was, and it survives greyscale and colour-blindness, which
+                 the old red/green pair did not.
+     Honesty was never carried by hue: a QC row says "blocking" / "not run"
+     / "n/a" in words, and those words are the source of truth. */
+  --ms-ok: var(--ms-blue);
+  --ms-warn: var(--ms-text-2);
+  --ms-danger: #FFFFFF;
 
   /* derived — role splits the palette doesn't cover (ratios vs --ms-surface) */
   --ms-text-soft: #CBD3E0;      /* 11.44:1 — body tier between text and text-2 */
   --ms-line-strong: #6B7589;    /*  3.72:1 — control borders (WCAG 1.4.11)     */
   --ms-blue-text: #A3AEFF;      /*  8.26:1 — accent as TYPE, --ms-blue is fill */
   --ms-blue-hover-solid: #3E4CE6; /* 6.21:1 under #fff — see the hover note    */
-  --ms-danger-text: #F98F89;    /*  7.65:1 — danger as TYPE                    */
+  --ms-ok-text: var(--ms-blue-text);
+  --ms-danger-text: #FFFFFF;    /* 18.91:1 — danger as TYPE is simply loudest  */
   --ms-focus: var(--ms-blue-text);
 
   /* tinted fills — each composites to ≥5.6:1 under its own text token */
   --ms-blue-wash: rgb(67 83 255 / 0.16);
-  --ms-ok-wash: rgb(57 195 106 / 0.16);
-  --ms-warn-wash: rgb(232 161 60 / 0.16);
-  --ms-danger-wash: rgb(229 49 43 / 0.16);
+  --ms-ok-wash: var(--ms-blue-wash);
+  --ms-warn-wash: rgb(166 176 192 / 0.14);
+  /* the one inverted surface in the app — dark type goes ON this */
+  --ms-danger-wash: #FFFFFF;
   --ms-neutral-wash: rgb(166 176 192 / 0.16);
 
   --ms-scrim: rgb(0 0 0 / 0.55);

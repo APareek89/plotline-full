@@ -6,7 +6,7 @@
 // dark --ms-* surface. Tokens live in globals.css; the literal fallbacks in
 // var(--ms-x, #hex) keep these cards legible wherever they mount.
 
-import { useId, useMemo, useState } from "react";
+import { createContext, useContext, useId, useMemo, useState } from "react";
 import {
   API_URL,
   AdCard,
@@ -40,7 +40,7 @@ const BTN =
 // --ms-blue-hover as a fill under #fff is 4.25:1; the solid twin is 6.21:1
 const BTN_PRIMARY = `${BTN} bg-[var(--ms-blue,#4353FF)] text-white hover:bg-[var(--ms-blue-hover-solid,#3E4CE6)]`;
 const BTN_GHOST = `${BTN} border border-[var(--ms-line,#2A3140)] text-[var(--ms-text-2,#A6B0C0)] hover:border-[var(--ms-text-2,#A6B0C0)] hover:text-[var(--ms-text,#FFFFFF)]`;
-const BTN_DANGER = `${BTN} border border-[var(--ms-danger,#E5312B)] text-[var(--ms-danger-text,#F98F89)]`;
+const BTN_DANGER = `${BTN} border border-[var(--ms-danger,#FFFFFF)] text-[var(--ms-danger-text,#FFFFFF)]`;
 // rendered, never functional. No native `disabled` — that swallows the hover
 // and focus its tooltip needs. Muted, but --ms-text-2 never drops below 4.5:1.
 const BTN_INERT = `${BTN} cursor-not-allowed border border-dashed border-[var(--ms-line-strong,#6B7589)] text-[var(--ms-text-2,#A6B0C0)]`;
@@ -93,11 +93,11 @@ export function MsChip({
 }) {
   const toned =
     tone === "ok"
-      ? "!border-[var(--ms-ok,#39C36A)] !text-[var(--ms-ok,#39C36A)]"
+      ? "!border-[var(--ms-ok-text,#A3AEFF)] !text-[var(--ms-ok-text,#A3AEFF)]"
       : tone === "warn"
-        ? "!border-[var(--ms-warn,#E8A13C)] !text-[var(--ms-warn,#E8A13C)]"
+        ? "!border-[var(--ms-text-2,#A6B0C0)] !text-[var(--ms-text-2,#A6B0C0)]"
         : tone === "danger"
-          ? "!border-[var(--ms-danger,#E5312B)] !text-[var(--ms-danger-text,#F98F89)]"
+          ? "!border-[var(--ms-danger,#FFFFFF)] !text-[var(--ms-danger-text,#FFFFFF)]"
           : tone === "blue"
             ? "!border-[var(--ms-blue,#4353FF)] !text-[var(--ms-blue-text,#A3AEFF)]"
             : "";
@@ -156,6 +156,47 @@ export function isCampaignArtifact(type: string): boolean {
   return (CAMPAIGN_ARTIFACT_TYPES as string[]).includes(type);
 }
 
+// ---- the review panel's five tabs -------------------------------------------
+// Owner decision 2026-08-26: the right pane is a READ-ONLY review surface with
+// tabs the agent drives — it switches to a tab the moment it has something to
+// put there. Keyframes gets its own tab rather than being folded into Creative
+// because it is a HARD GATE, and this codebase has already shipped one gate
+// that rendered as a dead end.
+//
+// Every type in CAMPAIGN_ARTIFACT_TYPES must appear exactly once below. A type
+// with no tab would render nowhere — the same species as the routing bug that
+// made campaign_brief a placeholder with no buttons — so a Python test reads
+// this map and fails if the two ever disagree.
+export const ARTIFACT_TABS = [
+  { id: "brief", label: "Brief" },
+  { id: "script", label: "Script" },
+  { id: "cast", label: "Cast" },
+  { id: "keyframes", label: "Keyframes" },
+  { id: "creative", label: "Creative" },
+] as const;
+
+export type TabId = (typeof ARTIFACT_TABS)[number]["id"];
+
+export const ARTIFACT_TAB: Record<string, TabId> = {
+  intake_progress: "brief",
+  campaign_brief: "brief",
+  campaign_option: "brief",
+  template_picker: "brief",
+  hook_rack: "script",
+  campaign_detail: "script",
+  canon_sheet: "cast",
+  keyframe_board: "keyframes",
+  model_confirm: "creative",
+  creative_set: "creative",
+  variant_matrix: "creative",
+  qc_report: "creative",
+  ad_card: "creative",
+};
+
+export function tabFor(type: string): TabId {
+  return ARTIFACT_TAB[type] ?? "brief";
+}
+
 // v2 step 7 invariant: these three events SPEND MONEY. They exist on exactly
 // one surface — the model_confirm card, behind an explicit single-vs-variants
 // choice. Any other artifact carrying one is a contract breach and gets
@@ -173,16 +214,32 @@ function ActionRow({
   omit,
 }: {
   artifact: ArtifactEnvelope;
-  onAction: (artifactId: string, event: string) => void;
-  busy: boolean;
+  onAction?: (artifactId: string, event: string) => void;
+  busy?: boolean;
   omit?: (event: string) => boolean;
 }) {
+  const reviewOnly = useContext(ReviewOnly);
   const actions = (artifact.actions ?? []).filter(
     (a) =>
       !isGenerationEvent(a.event) && // model_confirm renders its own gated row
       !(omit?.(a.event) ?? false)
   );
   if (!actions.length) return null;
+
+  // Read-only review surface: the card still SHOWS what is being asked of it,
+  // so a reader knows a decision is pending, but the decision is made in the
+  // composer. Hiding the labels entirely would leave the card looking finished
+  // when it is actually waiting on the user.
+  if (reviewOnly || !onAction) {
+    return (
+      <p className="mt-3 text-[12.5px] text-[var(--ms-text-2,#A6B0C0)]">
+        Waiting on you: <b className="text-[var(--ms-text,#FFFFFF)]">
+          {actions.map((a) => a.label).join(" · ")}
+        </b>{" "}
+        — answer in the chat.
+      </p>
+    );
+  }
   return (
     // pressing an action must never double as "open the panel"
     <div className="mt-3 flex flex-wrap gap-1.5" {...STOP}>
@@ -238,6 +295,10 @@ function EvidencePills({ evidence }: { evidence: Evidence[] }) {
   );
 }
 
+/** What every individual card receives. onAction and busy stay REQUIRED here:
+ *  a card is always handed something to call, even in review mode where that
+ *  something is a no-op. Making them optional at this level would push a null
+ *  check into ~15 call sites and buy nothing. */
 export interface CampaignArtifactProps {
   artifact: ArtifactEnvelope;
   /** Every button routes here — same UserEvent path as the typed commands. */
@@ -248,6 +309,26 @@ export interface CampaignArtifactProps {
   /** "thread" = compact card · "panel" = the full story. */
   variant?: "thread" | "panel";
 }
+
+/** What CALLERS pass. The review panel supplies neither handler nor busy. */
+export interface CampaignArtifactCardProps
+  extends Omit<CampaignArtifactProps, "onAction" | "busy"> {
+  onAction?: (artifactId: string, event: string) => void;
+  busy?: boolean;
+  /** Review mode: the card shows what is pending but nothing is pressable.
+   *  Owner decision 2026-08-26 — every CTA is answered in the composer. */
+  readOnly?: boolean;
+}
+
+/** Read-only travels by CONTEXT, not by prop.
+ *
+ *  ActionRow is called from six cards, and several cards render bespoke button
+ *  rows besides. Threading a flag through every one of those is how exactly one
+ *  gets missed and stays live — which is the bug this whole change removes. A
+ *  context is read wherever a button is about to be drawn, so a card added
+ *  later inherits the rule without anyone remembering to pass it. */
+const ReviewOnly = createContext(false);
+const NO_ACTION = () => {};
 
 // ---- 1. intake_progress -----------------------------------------------------
 // payload: {filled:{product,campaign,brand}, next_field}
@@ -265,6 +346,42 @@ function IntakeProgressCard({ artifact, onAction, busy }: CampaignArtifactProps)
   // the summary reads filled{}, not next_field — a null next_field with an
   // empty block means the intake stalled, not that everything is captured
   const missing = blocks.filter((b) => !filled[b.key]);
+
+  // The OPENING turn ships the four things the agent is listening for. It is a
+  // checklist, not a form — there is nothing to type into, because the whole
+  // point of removing the cards was that you answer in the conversation. The
+  // block chips below would read as three empty failures on a brand-new
+  // campaign, so on the opening turn they are simply not the story yet.
+  const asks: { id: string; label: string; note: string; need: string }[] = p.asks ?? [];
+  if (asks.length && next === "opening") {
+    return (
+      <div className={CARD}>
+        <p className={LABEL}>What I need to start</p>
+        <p className="mt-1 text-[16px] font-semibold tracking-[-0.01em]">
+          Four things and I can start
+        </p>
+        <div className="mt-3 overflow-hidden rounded-[10px] border border-[var(--ms-line,#2A3140)]">
+          {asks.map((a, i) => (
+            <div
+              key={a.id}
+              className={`flex items-start gap-3 px-3 py-2.5 ${
+                i ? "border-t border-[var(--ms-line,#2A3140)]" : ""
+              }`}
+            >
+              <span className="mt-0.5 w-4 shrink-0 font-mono text-[11px] text-[var(--ms-text-2,#A6B0C0)]">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span className="flex-1">
+                <span className="block text-[13.5px]">{a.label}</span>
+                <span className={`block text-[12px] leading-[17px] ${MUTED}`}>{a.note}</span>
+              </span>
+              <span className={`shrink-0 text-[11.5px] ${MUTED}`}>{a.need}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={CARD}>
@@ -931,7 +1048,7 @@ function AdCardCard({
 
   return (
     <div
-      className={`${CARD} border-l-[3px] border-l-[var(--ms-ok,#39C36A)] ${root.role ? CARD_OPEN : ""}`}
+      className={`${CARD} border-l-[3px] border-l-[var(--ms-ok-text,#A3AEFF)] ${root.role ? CARD_OPEN : ""}`}
       {...root}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1030,7 +1147,40 @@ function AdCardCard({
 
 // ---- dispatcher -------------------------------------------------------------
 
-export function CampaignArtifactCard(props: CampaignArtifactProps) {
+export function CampaignArtifactCard({
+  readOnly,
+  onAction,
+  busy,
+  ...rest
+}: CampaignArtifactCardProps) {
+  const props: CampaignArtifactProps = {
+    ...rest,
+    onAction: readOnly ? NO_ACTION : (onAction ?? NO_ACTION),
+    busy: readOnly ? false : (busy ?? false),
+  };
+  // Read-only is enforced STRUCTURALLY, not card by card. Several cards render
+  // their own bespoke button rows (model_confirm's gated cost row, the creative
+  // set's re-roll strip), and gating each one by hand is how exactly one stays
+  // live and re-creates the bug this change exists to remove. A wrapper that
+  // kills pointer events and hides everything from the tab order cannot miss
+  // one; ActionRow's "waiting on you" line is what keeps the card honest about
+  // the fact that a decision is still pending.
+  if (readOnly) {
+    return (
+      <ReviewOnly.Provider value={true}>
+        {/* belt as well as braces: the context stops ActionRow drawing buttons,
+            and this stops any bespoke row a card renders itself from being
+            pressable or reachable by keyboard. */}
+        <div className="[&_button]:pointer-events-none [&_a]:pointer-events-none">
+          <CampaignArtifactBody {...props} />
+        </div>
+      </ReviewOnly.Provider>
+    );
+  }
+  return <CampaignArtifactBody {...props} />;
+}
+
+function CampaignArtifactBody(props: CampaignArtifactProps) {
   switch (props.artifact.type) {
     case "intake_progress":
       return <IntakeProgressCard {...props} />;
@@ -1162,7 +1312,7 @@ function CampaignBriefCard({ artifact, onAction, busy }: CampaignArtifactProps) 
             <p className={LABEL}>Guardrails</p>
             <ul className="mt-1 space-y-0.5 text-[12px]">
               {(b.guardrails ?? []).map((g: string, i: number) => (
-                <li key={i} className="text-[var(--ms-danger-text,#F98F89)]">never {g}</li>
+                <li key={i} className="text-[var(--ms-danger-text,#FFFFFF)]">never {g}</li>
               ))}
             </ul>
           </div>
@@ -1307,7 +1457,7 @@ function CanonSheetCard({ artifact, onAction, busy }: CampaignArtifactProps) {
                 <p className={`mt-1.5 text-[11px] ${MUTED}`}>locks: {s.locks.join(" · ")}</p>
               )}
               {(s.risk_notes ?? []).length > 0 && (
-                <p className="mt-1.5 border-l-2 border-[var(--ms-danger,#E5312B)] pl-2 text-[11px] text-[var(--ms-danger-text,#F98F89)]">
+                <p className="mt-1.5 border-l-2 border-[var(--ms-danger,#FFFFFF)] pl-2 text-[11px] text-[var(--ms-danger-text,#FFFFFF)]">
                   geometry risk: {s.risk_notes.join(", ")}
                 </p>
               )}
@@ -1380,9 +1530,9 @@ function KeyframeBoardCard({ artifact, onAction, busy }: CampaignArtifactProps) 
                     title={`${CHECK_LABEL[k] ?? k}: ${v}`}
                     className={`h-1.5 w-1.5 rounded-full ${
                       v === "pass"
-                        ? "bg-[var(--ms-ok,#3FB950)]"
+                        ? "bg-[var(--ms-ok-text,#A3AEFF)]"
                         : v === "fail"
-                          ? "bg-[var(--ms-danger,#E5312B)]"
+                          ? "bg-[var(--ms-danger,#FFFFFF)]"
                           : "bg-[var(--ms-line-strong,#6B7589)]"
                     }`}
                   />
@@ -1428,8 +1578,8 @@ function QCReportCard({ artifact, onAction, busy }: CampaignArtifactProps) {
     <div
       className={`${CARD} border-l-[3px] ${
         report.verdict === "held"
-          ? "border-l-[var(--ms-danger,#E5312B)]"
-          : "border-l-[var(--ms-ok,#3FB950)]"
+          ? "border-l-[var(--ms-danger,#FFFFFF)]"
+          : "border-l-[var(--ms-ok-text,#A3AEFF)]"
       }`}
     >
       <div className="flex items-center justify-between gap-3">

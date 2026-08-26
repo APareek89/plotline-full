@@ -1,568 +1,369 @@
 "use client";
 
-// v2 §MY CAMPAIGNS (main tab 2): campaign rows — name, objective, status
-// lifecycle (Draft → Planned → In production → Ready → Live), creative count,
-// spend-to-date in credits; CTAs Open + Generate next creative. Live rows carry
-// the results-paste nudge (CTR/CPC/CPA/ROAS → performance memory, keyed
-// brand × angle × format × placement).
+// My Campaigns — a folder GRID, which Addendum-03 §02 always wanted and the
+// row list never was. Owner decision 2026-08-26 made it the landing surface:
+// Current / Archived, search, sort, and a per-card menu that can finally
+// DELETE, because until now nothing could and a dev database reached 31 QA
+// campaigns with no way to clear them.
 //
-// Theme: the page wraps itself in `.ms-dark` and then just uses the shared
-// primitives (.card/.chip/.btn/.input) — globals.css re-skins them for the dark
-// surface, so there is no CSS here beyond the five lifecycle chip variants,
-// which are Tailwind ms-* utilities. Light Phase-1 screens are untouched.
-//
-// Cost invariant: "Generate next creative" NEVER generates. It fires the
-// campaign_detail artifact's generate_creative action, which answers with the
-// model-confirm card (cost + single-vs-variants), then takes the user there.
+// Theme: blue and white only. Status stopped being a hue — a lifecycle chip
+// now reads by weight and wash, and the terminal state inverts. See the token
+// block in globals.css.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  AdCard,
-  AgentMessage,
-  CAMPAIGN_STATUS_LABELS,
-  CampaignRecord,
-  CampaignStatus,
-  CampaignSummary,
-  OBJECTIVE_LABELS,
-  PLATFORM_LABELS,
-  api,
-} from "@/lib/api";
+import { CampaignStatus, CampaignSummary, api } from "@/lib/api";
+import { CampaignStyles, ErrorStrip, MsApiError, nameError } from "@/components/campaign-blocks";
 
-const POLL_MS = 6000;
-const STALE_H = 72; // v2: live >72h with no pasted results = honesty surface
+const POLL_MS = 8000;
 
-interface PerfRow {
-  id: string;
-  series_id: string | null;
-  concept_id: string | null;
-  platform: string;
-  metrics: Record<string, any>;
-  pasted_at: number;
-}
+// Every campaign that has not reached a terminal state. "Archived" is derived,
+// not stored: there is no archive flag on the server yet, so the tab shows the
+// campaigns that are DONE rather than pretending a feature exists.
+const TERMINAL: CampaignStatus[] = ["live"];
 
-// Five distinct treatments. --ms-blue and --ms-danger are fill-only on this
-// surface (3.2:1 / 4.0:1 as type), so the chips use the -text twins and the
-// -wash fills, and Live inverts to a solid for the terminal state.
-const CHIP: Record<CampaignStatus, { chip: string; dot: string; hint: string }> = {
-  draft: {
-    chip: "!text-muted",
-    dot: "bg-ms-text-2",
-    hint: "Intake cards aren't finished — no approved campaign detail yet.",
-  },
-  planned: {
-    chip: "!border-ms-blue !bg-ms-blue-wash !text-ms-blue-text",
-    dot: "bg-ms-blue-text",
-    hint: "An option is approved and the campaign detail exists — ready to produce.",
-  },
-  in_production: {
-    chip: "!border-ms-warn !bg-ms-warn-wash !text-ms-warn",
-    dot: "bg-ms-warn animate-pulse motion-reduce:animate-none",
-    hint: "Generation is running in this campaign's thread.",
-  },
-  ready: {
-    chip: "!border-ms-ok !bg-ms-ok-wash !text-ms-ok",
-    dot: "bg-ms-ok",
-    hint: "Ad Card assembled — export the bundle or mark it live.",
-  },
-  live: {
-    chip: "!border-transparent !bg-ms-ok !text-ms-bg !font-bold",
-    dot: "bg-ms-bg",
-    hint: "Running — paste results so performance memory learns.",
-  },
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  planned: "Planned",
+  in_production: "In production",
+  ready: "Ready",
+  live: "Live",
 };
 
-const credits = (n: number | null | undefined) =>
-  `${(Math.round((n ?? 0) * 10) / 10).toLocaleString()} credits`;
-
-function ageLabel(epochSeconds: number): string {
-  const h = (Date.now() / 1000 - epochSeconds) / 3600;
-  return h < 48 ? `${Math.floor(h)}h` : `${Math.floor(h / 24)}d`;
+// One accent, one neutral, one inverted — no second hue anywhere.
+function chipClass(status: string): string {
+  if (status === "live") return "border-transparent bg-white text-[var(--ms-bg)] font-bold";
+  if (status === "draft") return "border-[var(--ms-line)] text-[var(--ms-text-2)]";
+  return "border-[var(--ms-blue)] bg-[var(--ms-blue-wash)] text-[var(--ms-blue-text)]";
 }
 
-// ------------------------------------------------------------------ page --
+/** Deterministic per-campaign tint so a card without creatives still reads as
+ *  itself in the grid. Derived from the id, never random — a thumbnail that
+ *  changed on every poll would be noise pretending to be information. */
+function tint(id: string, i: number): string {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const a = 18 + ((h >> (i * 3)) % 26);
+  const b = 34 + ((h >> (i * 5)) % 30);
+  return `linear-gradient(135deg, hsl(230 ${a}% ${12 + (i % 3) * 4}%), hsl(233 ${b}% ${22 + (i % 3) * 7}%))`;
+}
 
 export default function CampaignsPage() {
   const router = useRouter();
-  const [rows, setRows] = useState<CampaignSummary[] | null>(null);
-  const [full, setFull] = useState<Record<string, CampaignRecord>>({});
-  const [perf, setPerf] = useState<PerfRow[]>([]);
+  const [rows, setRows] = useState<CampaignSummary[]>([]);
+  const [tab, setTab] = useState<"current" | "archived">("current");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"recent" | "name">("recent");
+  const [menu, setMenu] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<CampaignSummary | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [openNudge, setOpenNudge] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
 
-  const loadDetails = useCallback(async (list: CampaignSummary[]) => {
-    // Threads (Open fallback) + ad cards (the nudge) only live on the detail
-    // route, so it's fetched once per load — never on the poll.
-    const entries = await Promise.all(
-      list.slice(0, 24).map(
-        async (c) => [c.id, await api.campaigns.get(c.id).catch(() => null)] as const
-      )
+  const load = useCallback(() => {
+    api.campaigns
+      .list()
+      .then((r) => {
+        setRows(r);
+        setOffline(false);
+      })
+      .catch(() => setOffline(true));
+  }, []);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, POLL_MS);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = rows.filter((r) =>
+      tab === "archived" ? TERMINAL.includes(r.status) : !TERMINAL.includes(r.status)
     );
-    setFull(Object.fromEntries(entries.filter((e): e is [string, CampaignRecord] => !!e[1])));
-  }, []);
+    if (q) list = list.filter((r) => r.name.toLowerCase().includes(q));
+    if (sort === "name") list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  }, [rows, tab, query, sort]);
 
-  const loadPerf = useCallback(() => {
-    api.performance.list().then((r) => setPerf(r as PerfRow[])).catch(() => {});
-  }, []);
+  const nameProblem = naming ? nameError(name, rows) : null;
 
-  const loadList = useCallback(
-    async (withDetails: boolean) => {
-      try {
-        const list = await api.campaigns.list();
-        setRows(list);
-        setError(null);
-        if (withDetails && list.length) await loadDetails(list);
-      } catch (e: any) {
-        setError(e?.message ?? String(e));
-        setRows((prev) => prev ?? []);
-      }
-    },
-    [loadDetails]
-  );
-
-  useEffect(() => {
-    loadList(true);
-    loadPerf();
-    const iv = setInterval(() => loadList(false), POLL_MS);
-    return () => clearInterval(iv);
-  }, [loadList, loadPerf]);
-
-  const totals = useMemo(() => {
-    const list = rows ?? [];
-    return {
-      count: list.length,
-      creatives: list.reduce((a, c) => a + (c.creative_count ?? 0), 0),
-      spend: list.reduce((a, c) => a + (c.spend_credits ?? 0), 0),
-      live: list.filter((c) => c.status === "live").length,
-    };
-  }, [rows]);
-
-  const threadIdFor = (c: CampaignSummary): string | null => {
-    if (c.thread_id) return c.thread_id;
-    const ts = full[c.id]?.threads ?? [];
-    return [...ts].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)).at(-1)?.id ?? null;
-  };
-
-  const say = (id: string, msg: string) => setNotes((n) => ({ ...n, [id]: msg }));
-
-  const openCampaign = (c: CampaignSummary) => {
-    const tid = threadIdFor(c);
-    if (!tid) return say(c.id, "This campaign has no thread yet — start it from Campaign Studio.");
-    router.push(`/studio/thread/${tid}?kind=campaign`);
-  };
-
-  const generateNext = async (c: CampaignSummary) => {
-    const tid = threadIdFor(c);
-    if (!tid) return say(c.id, "This campaign has no thread yet — start it from Campaign Studio.");
-    setBusy(c.id);
-    say(c.id, "");
+  async function create() {
+    if (nameProblem || !name.trim() || busy) return;
+    setBusy(true);
+    setError(null);
     try {
-      const t = await api.threads.get(tid);
-      const detail = [...(t.messages ?? [])]
-        .reverse()
-        .flatMap((m) => (m.role === "agent" ? (m.envelope as AgentMessage).artifacts ?? [] : []))
-        .find((a) => a.type === "campaign_detail");
-      if (!detail) {
-        // Defensive: status says producible but the thread holds no detail to
-        // act on. Say so and stay here rather than navigating silently.
-        say(c.id, "No campaign detail in the latest thread yet — open the campaign and approve an option first.");
-        return;
-      }
-      await api.threads.sendAction(tid, detail.id, "generate_creative");
-      router.push(`/studio/thread/${tid}?kind=campaign`);
-    } catch (e: any) {
-      say(c.id, `Couldn't start it: ${e?.message ?? String(e)}`);
+      const made = await api.campaigns.create(name.trim());
+      router.push(`/studio/thread/${made.thread.id}?kind=campaign`);
+    } catch (e) {
+      setError(e instanceof MsApiError ? e.message : String(e));
+      setBusy(false);
+    }
+  }
+
+  async function remove(row: CampaignSummary) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.campaigns.remove(row.id);
+      setConfirming(null);
+      setRows((r) => r.filter((x) => x.id !== row.id));
+    } catch (e) {
+      setError(e instanceof MsApiError ? e.message : String(e));
     } finally {
-      setBusy(null);
-      loadList(true);
+      setBusy(false);
     }
-  };
-
-  const hasResults = (c: CampaignSummary) => {
-    const cardIds = new Set((full[c.id]?.ad_cards ?? []).map((a) => a.id));
-    return perf.some((p) => p.series_id === c.id || (p.concept_id ? cardIds.has(p.concept_id) : false));
-  };
-
-  const empty = rows !== null && rows.length === 0;
+  }
 
   return (
-    <div className="ms-dark min-h-[calc(100vh-57px)] w-full px-6 py-5">
-      {/* ---- header ---- */}
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div
+      className="ms-dark min-h-[calc(100dvh-53.5px)] bg-[var(--ms-bg)] px-10 py-8 text-[var(--ms-text)]"
+      onClick={() => setMenu(null)}
+    >
+      <CampaignStyles />
+
+      <div className="flex items-start justify-between gap-6">
         <div>
-          <p className="mono text-[10.5px] uppercase tracking-[0.18em] text-muted">
-            Marketing Studio
+          <h1 className="text-[32px] font-bold leading-tight tracking-[-0.02em]">Campaigns</h1>
+          <p className="mt-1.5 text-[14px] text-[var(--ms-text-2)]">
+            Brief once. The agent builds the rest.
           </p>
-          <h1 className="display mt-0.5 text-[22px] font-bold">My campaigns</h1>
-          {!!rows?.length && (
-            <p className="mt-1 text-[12.5px] text-muted">
-              {totals.count} campaign{totals.count === 1 ? "" : "s"} · {totals.creatives} creative
-              {totals.creatives === 1 ? "" : "s"} · {credits(totals.spend)} spent
-              {totals.live > 0 ? ` · ${totals.live} live` : ""}
-            </p>
-          )}
         </div>
-        <Link href="/studio/campaign" className="btn btn-primary">
-          + New campaign
-        </Link>
+        <label className="flex h-10 w-[330px] items-center gap-2 rounded-[12px] border border-[var(--ms-line)] bg-[var(--ms-surface)] px-3.5">
+          <span aria-hidden className="text-[var(--ms-text-2)]">⌕</span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search campaigns…"
+            aria-label="Search campaigns"
+            className="w-full bg-transparent text-[14px] outline-none placeholder:text-[var(--ms-text-2)]"
+          />
+        </label>
       </div>
 
-      {error && (
-        <div className="card mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 !bg-ms-danger-wash !border-ms-danger px-4 py-3 text-[13px]">
-          <span className="font-semibold text-ms-danger-text">Can&apos;t reach the campaigns API</span>
-          <span className="text-muted">
-            {error}
-            {rows?.length ? " — the rows below are the last successful load." : ""}
-          </span>
-          <button className="btn btn-ghost !py-1 !text-[12.5px]" onClick={() => loadList(true)}>
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* ---- empty state ---- */}
-      {empty && !error && (
-        <div className="card px-8 py-14 text-center">
-          <h2 className="display text-[17px] font-bold">No campaigns yet</h2>
-          <p className="mx-auto mt-2 max-w-md text-[13.5px] leading-relaxed text-muted">
-            Name a campaign, fill the product, campaign and brand cards, and the studio drafts
-            options, a detail script and the creative.
-          </p>
-          <Link href="/studio/campaign" className="btn btn-primary mt-5">
-            New campaign
-          </Link>
-        </div>
-      )}
-
-      {rows === null && !error && (
-        <p className="py-10 text-center text-[13px] italic text-muted">Loading campaigns…</p>
-      )}
-
-      {/* ---- column header (wide only) ---- */}
-      {!!rows?.length && (
-        <div className="field-label mb-1.5 hidden items-center gap-4 px-4 lg:flex">
-          <span className="min-w-0 flex-1">Campaign</span>
-          <span className="w-[112px] shrink-0">Status</span>
-          <span className="w-[86px] shrink-0 text-right">Creatives</span>
-          <span className="w-[110px] shrink-0 text-right">Spend</span>
-          <span className="w-[248px] shrink-0" />
-        </div>
-      )}
-
-      {/* ---- rows ---- */}
-      <div className="space-y-2">
-        {(rows ?? []).map((c) => {
-          const skin = CHIP[c.status] ?? CHIP.draft;
-          const cards = full[c.id]?.ad_cards ?? [];
-          const liveCards = cards.filter((a) => a.status === "live");
-          const anchor = liveCards.length ? Math.max(...liveCards.map((a) => a.created_at ?? 0)) : 0;
-          const results = hasResults(c);
-          const stale =
-            c.status === "live" && !results && anchor > 0 &&
-            (Date.now() / 1000 - anchor) / 3600 > STALE_H;
-          const canProduce = c.status !== "draft";
-          const done = full[c.id]?.cards_done;
-          const missing = done
-            ? (["product", "campaign", "brand"] as const).filter((k) => !done[k])
-            : [];
-
-          return (
-            <div key={c.id} className="card px-4 py-3 transition-colors hover:!bg-ms-elev">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:flex-nowrap">
-                {/* name + objective */}
-                <div className="min-w-0 flex-1">
-                  <button
-                    onClick={() => openCampaign(c)}
-                    className="block max-w-full truncate text-left text-[15px] font-bold hover:underline"
-                    title={c.name}
-                  >
-                    {c.name}
-                  </button>
-                  <p className="mt-0.5 truncate text-[12px] text-muted">
-                    {c.objective ? OBJECTIVE_LABELS[c.objective] ?? c.objective : "Objective not set"}
-                    {missing.length > 0 && (
-                      <span className="text-ms-warn">
-                        {" "}
-                        · {missing.length} card{missing.length === 1 ? "" : "s"} left ({missing.join(", ")})
-                      </span>
-                    )}
-                  </p>
-                </div>
-
-                {/* lifecycle chip */}
-                <div className="w-[112px] shrink-0">
-                  <span className={`chip ${skin.chip}`} title={skin.hint}>
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${skin.dot}`} />
-                    {CAMPAIGN_STATUS_LABELS[c.status] ?? c.status}
-                  </span>
-                </div>
-
-                {/* counts */}
-                <div className="w-[86px] shrink-0 text-right text-[13px] tabular-nums">
-                  {c.creative_count ?? 0}
-                  <span className="text-muted lg:hidden"> creatives</span>
-                </div>
-                <div
-                  className="w-[110px] shrink-0 text-right text-[13px] tabular-nums"
-                  title="Spend to date across this campaign's threads"
-                >
-                  {credits(c.spend_credits)}
-                </div>
-
-                {/* CTAs */}
-                <div className="flex w-[248px] shrink-0 justify-end gap-2">
-                  <button
-                    className="btn btn-ghost !px-3.5 !py-1.5"
-                    onClick={() => openCampaign(c)}
-                    title="Open the campaign's latest thread"
-                  >
-                    Open
-                  </button>
-                  <button
-                    className="btn btn-primary !px-3.5 !py-1.5"
-                    disabled={!canProduce || busy === c.id}
-                    onClick={() => generateNext(c)}
-                    title={
-                      canProduce
-                        ? "Posts the cost + single-vs-variants confirmation into the thread — nothing generates until you confirm there"
-                        : "No approved campaign detail yet — Open the campaign to finish the intake cards and approve an option"
-                    }
-                  >
-                    {busy === c.id ? "Opening…" : "Generate next creative"}
-                  </button>
-                </div>
-              </div>
-
-              {/* the disabled reason lives in the row, not only in a tooltip */}
-              {!canProduce && (
-                <p className="mt-2 text-[12px] text-muted">
-                  Generate next creative is off until an option is approved and a campaign detail
-                  exists — Open is the action that gets you there.
-                </p>
-              )}
-
-              {notes[c.id] && <p className="mt-2 text-[12px] text-ms-warn">{notes[c.id]}</p>}
-
-              {/* ---- results-paste nudge (live only) ---- */}
-              {c.status === "live" && (
-                <div className="mt-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      className="btn btn-ghost !py-1.5 !text-[12.5px]"
-                      onClick={() => setOpenNudge(openNudge === c.id ? null : c.id)}
-                    >
-                      {openNudge === c.id ? "Hide results form" : "Paste results"}
-                    </button>
-                    {stale ? (
-                      <span className="text-[12px] text-ms-warn">
-                        Live ad card created {ageLabel(anchor)} ago — no results pasted yet.
-                        Performance memory can&apos;t learn from this campaign until you paste them.
-                      </span>
-                    ) : results ? (
-                      <span className="text-[12px] text-ms-ok">
-                        Results logged — feeding performance memory.
-                      </span>
-                    ) : (
-                      <span className="text-[12px] text-muted">
-                        CTR / CPC / CPA / ROAS keyed brand × angle × format × placement.
-                      </span>
-                    )}
-                  </div>
-                  {openNudge === c.id && (
-                    <ResultsNudge
-                      campaign={c}
-                      cards={cards}
-                      platforms={full[c.id]?.context?.campaign?.platforms ?? []}
-                      stale={stale}
-                      onSaved={() => {
-                        loadPerf();
-                        setOpenNudge(null);
-                      }}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ------------------------------------------------------- results-paste form --
-
-function ResultsNudge({
-  campaign,
-  cards,
-  platforms,
-  stale,
-  onSaved,
-}: {
-  campaign: CampaignSummary;
-  cards: AdCard[];
-  platforms: string[];
-  stale: boolean;
-  onSaved: () => void;
-}) {
-  const liveCards = cards.filter((a) => a.status === "live");
-  const pickable = liveCards.length ? liveCards : cards;
-  const [cardId, setCardId] = useState<string>(pickable[0]?.id ?? "");
-  const card = pickable.find((a) => a.id === cardId) ?? pickable[0];
-
-  // Placements: where the creative actually ran, else the campaign's chosen
-  // platforms, else the full list.
-  const options = useMemo(() => {
-    const fromCard = Object.keys(card?.placements ?? {});
-    return fromCard.length ? fromCard : platforms.length ? platforms : Object.keys(PLATFORM_LABELS);
-  }, [card, platforms]);
-
-  const [platform, setPlatform] = useState<string>(options[0] ?? "instagram_feed");
-  const [f, setF] = useState<Record<string, string>>({});
-  const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!options.includes(platform)) setPlatform(options[0] ?? "instagram_feed");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.join("|")]);
-
-  const num = (v?: string): number | null => {
-    if (v === undefined || v.trim() === "") return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  const submit = async () => {
-    const ctr = num(f.ctr), cpc = num(f.cpc), cpa = num(f.cpa), roas = num(f.roas);
-    if (ctr === null && cpc === null && cpa === null && roas === null) {
-      setErr("Enter at least one of CTR / CPC / CPA / ROAS.");
-      return;
-    }
-    setErr(null);
-    setState("saving");
-
-    // The memory key, written verbatim so the row stays readable in My Space —
-    // and so the numbers survive even if the route drops fields it doesn't
-    // model yet.
-    const angle = card?.option_id
-      ? `${card.option_id}${card.variant_id ? `/${card.variant_id}` : ""}`
-      : "unknown";
-    const key =
-      `brand=${campaign.name} · angle=${angle} · ` +
-      `format=${card?.creative_type ?? "unknown"} · placement=${platform}`;
-    const mirrored = [
-      ctr !== null && `CTR ${ctr}%`,
-      cpc !== null && `CPC ${cpc}`,
-      cpa !== null && `CPA ${cpa}`,
-      roas !== null && `ROAS ${roas}`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-    const body: Record<string, any> = {
-      series_id: campaign.id, // a campaign IS a series row
-      concept_id: card?.id ?? null, // the Ad Card this result belongs to
-      campaign_id: campaign.id,
-      ad_card_id: card?.id ?? null,
-      platform,
-      ctr_pct: ctr,
-      cpc,
-      cpa,
-      roas,
-      notes: [mirrored, key, f.notes?.trim()].filter(Boolean).join(" — "),
-    };
-
-    try {
-      try {
-        await api.performance.add(body);
-      } catch (e: any) {
-        // If the route still models only the v1 post metrics, retry with what
-        // it does accept — `notes` above already carries the rest verbatim.
-        if (!/^422/.test(e?.message ?? "")) throw e;
-        const { campaign_id, ad_card_id, cpc: _c, cpa: _a, roas: _r, ...safe } = body;
-        await api.performance.add(safe);
-      }
-      setState("saved");
-      setF({});
-      setTimeout(onSaved, 900);
-    } catch (e: any) {
-      setState("idle");
-      setErr(`Couldn't save: ${e?.message ?? String(e)}`);
-    }
-  };
-
-  const field = (key: string, label: string, placeholder: string) => (
-    <div key={key}>
-      <p className="field-label">{label}</p>
-      <input
-        className="input mt-1 !py-1.5"
-        inputMode="decimal"
-        placeholder={placeholder}
-        value={f[key] ?? ""}
-        onChange={(e) => setF({ ...f, [key]: e.target.value })}
-      />
-    </div>
-  );
-
-  return (
-    <div className={`card mt-2 !bg-ms-elev p-3 ${stale ? "!border-ms-warn" : ""}`}>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-        {pickable.length > 0 && (
-          <div>
-            <p className="field-label">Ad card</p>
-            <select
-              className="input mt-1 !py-1.5"
-              value={cardId}
-              onChange={(e) => setCardId(e.target.value)}
+      <div className="mt-6 flex items-center justify-between border-b border-[var(--ms-line)] pb-3.5">
+        <div className="flex gap-1">
+          {(["current", "archived"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded-[8px] px-4 py-1.5 text-[14px] capitalize transition-colors ${
+                tab === t
+                  ? "bg-[var(--ms-elev)] font-semibold text-[var(--ms-text)]"
+                  : "text-[var(--ms-text-2)] hover:text-[var(--ms-text)]"
+              }`}
             >
-              {pickable.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.id}
-                  {a.variant_id ? ` · ${a.variant_id}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        <div>
-          <p className="field-label">Placement</p>
-          <select
-            className="input mt-1 !py-1.5"
-            value={platform}
-            onChange={(e) => setPlatform(e.target.value)}
-          >
-            {options.map((p) => (
-              <option key={p} value={p}>
-                {PLATFORM_LABELS[p] ?? p}
-              </option>
-            ))}
-          </select>
+              {t}
+            </button>
+          ))}
         </div>
-        {field("ctr", "CTR %", "1.8")}
-        {field("cpc", "CPC", "0.42")}
-        {field("cpa", "CPA", "12.50")}
-        {field("roas", "ROAS", "3.1")}
+        <div className="flex items-center gap-2 text-[13px] text-[var(--ms-text-2)]">
+          <span>Sort</span>
+          {(["recent", "name"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSort(s)}
+              className={`rounded-[8px] border px-3 py-1.5 capitalize transition-colors ${
+                sort === s
+                  ? "border-[var(--ms-line-strong)] bg-[var(--ms-elev)] text-[var(--ms-text)]"
+                  : "border-[var(--ms-line)] hover:text-[var(--ms-text)]"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <input
-          className="input min-w-[200px] flex-1 !py-1.5"
-          placeholder="Notes — what you'd change next round (optional)"
-          value={f.notes ?? ""}
-          onChange={(e) => setF({ ...f, notes: e.target.value })}
-        />
-        <button className="btn btn-primary" onClick={submit} disabled={state === "saving"}>
-          {state === "saving" ? "Saving…" : state === "saved" ? "Logged ✓" : "Log results"}
-        </button>
-      </div>
-      {err && <p className="mt-2 text-[12px] text-ms-danger-text">{err}</p>}
-      {pickable.length === 0 && (
-        <p className="mt-2 text-[12px] text-muted">
-          No Ad Card on this campaign yet — the result will be keyed to the campaign only.
+
+      {offline && (
+        <p className="mt-4 text-[13px] italic text-[var(--ms-text-2)]">
+          Can&apos;t reach the API — retrying. Nothing below is lost.
         </p>
+      )}
+      {error && <div className="mt-4"><ErrorStrip>{error}</ErrorStrip></div>}
+
+      <p className="mb-3.5 mt-5 text-[14px] font-semibold">My campaigns</p>
+
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(212px,1fr))] gap-x-5 gap-y-6">
+        {/* New campaign — the ONLY form in the product is its name */}
+        <button
+          onClick={() => {
+            setNaming(true);
+            setName("");
+          }}
+          className="group text-left"
+        >
+          <div className="grid aspect-[16/10] place-items-center rounded-[12px] border border-dashed border-[var(--ms-line-strong)] bg-[var(--ms-surface)] transition-colors group-hover:border-[var(--ms-blue)]">
+            <span className="text-[26px] font-extralight text-[var(--ms-text-2)]">+</span>
+          </div>
+          <p className="mt-2.5 text-[14px] text-[var(--ms-text-2)] group-hover:text-[var(--ms-text)]">
+            New campaign
+          </p>
+        </button>
+
+        {shown.map((row) => (
+          <div key={row.id} className="relative">
+            <button
+              onClick={() =>
+                row.thread_id && router.push(`/studio/thread/${row.thread_id}?kind=campaign`)
+              }
+              className="group w-full text-left"
+            >
+              <div className="grid aspect-[16/10] grid-cols-3 grid-rows-2 gap-px overflow-hidden rounded-[12px] border border-[var(--ms-line)] transition-colors group-hover:border-[var(--ms-blue)]">
+                {row.creative_count > 0 ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <span key={i} style={{ background: tint(row.id, i) }} />
+                  ))
+                ) : (
+                  <span
+                    className="col-span-3 row-span-2 grid place-items-center text-[22px] text-[var(--ms-line-strong)]"
+                    aria-hidden
+                  >
+                    ✦
+                  </span>
+                )}
+              </div>
+              <div className="mt-2.5 flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="relative h-3 w-[15px] shrink-0 rounded-[2px_3px_3px_3px] bg-[var(--ms-blue-text)] opacity-85 before:absolute before:-top-[3px] before:left-0 before:h-[3px] before:w-[6px] before:rounded-t-[2px] before:bg-[var(--ms-blue-text)] before:content-['']"
+                />
+                <span className="flex-1 truncate text-[14px]">{row.name}</span>
+              </div>
+              <p className="mt-1 flex items-center gap-1.5 pl-[23px] text-[12px] text-[var(--ms-text-2)]">
+                <span
+                  className={`rounded-[6px] border px-1.5 py-[1px] text-[10.5px] ${chipClass(row.status)}`}
+                >
+                  {STATUS_LABEL[row.status] ?? row.status}
+                </span>
+                {row.creative_count > 0 && <span>{row.creative_count} creative</span>}
+                {row.spend_credits > 0 && <span>· {row.spend_credits} cr</span>}
+              </p>
+            </button>
+
+            <button
+              aria-label={`Actions for ${row.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenu(menu === row.id ? null : row.id);
+              }}
+              className="absolute right-0 top-[calc(100%-46px)] px-2 text-[var(--ms-text-2)] hover:text-[var(--ms-text)]"
+            >
+              ⋮
+            </button>
+            {menu === row.id && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute right-0 top-[calc(100%-24px)] z-20 w-[168px] overflow-hidden rounded-[10px] border border-[var(--ms-line)] bg-[var(--ms-elev)] shadow-[var(--ms-shadow)]"
+              >
+                <button
+                  onClick={() => {
+                    setMenu(null);
+                    setConfirming(row);
+                  }}
+                  className="block w-full px-3.5 py-2.5 text-left text-[13px] hover:bg-[var(--ms-surface)]"
+                >
+                  Delete campaign
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {shown.length === 0 && (
+        <p className="mt-10 text-[13.5px] text-[var(--ms-text-2)]">
+          {query.trim()
+            ? `Nothing matches “${query.trim()}”.`
+            : tab === "archived"
+              ? "Nothing archived yet — campaigns land here once they go live."
+              : "No campaigns yet. Name one and tell the agent what you're making."}
+        </p>
+      )}
+
+      {/* ---- name modal: the one form in the product ---- */}
+      {naming && (
+        <div
+          className="cb-scrim fixed inset-0 z-50 grid place-items-center backdrop-blur-[3px]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Name your campaign"
+          onClick={() => !busy && setNaming(false)}
+        >
+          <div className="cb-modal w-[436px] p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-[20px] font-semibold tracking-[-0.01em]">Name your campaign</h2>
+            <p className="mt-1.5 text-[13px] leading-[19px] text-[var(--ms-text-2)]">
+              One name, that&apos;s all. Everything else you tell the agent in the thread.
+            </p>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && create()}
+              placeholder="Spring launch"
+              aria-invalid={!!nameProblem}
+              className="cb-input mt-5 !h-[46px] !text-[14px]"
+            />
+            {nameProblem && (
+              <p className="mt-2 text-[12px] font-semibold text-[var(--ms-text)]">{nameProblem}</p>
+            )}
+            <div className="mt-5 flex justify-end gap-2.5">
+              <button className="cb-btn cb-btn-ghost" onClick={() => setNaming(false)} disabled={busy}>
+                Cancel
+              </button>
+              <button
+                className="cb-btn cb-btn-primary"
+                onClick={create}
+                disabled={busy || !!nameProblem || !name.trim()}
+              >
+                {busy ? "Opening…" : "Create campaign"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- delete confirm: names what goes, because it does not come back ---- */}
+      {confirming && (
+        <div
+          className="cb-scrim fixed inset-0 z-50 grid place-items-center backdrop-blur-[3px]"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !busy && setConfirming(null)}
+        >
+          <div className="cb-modal w-[436px] p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-[20px] font-semibold tracking-[-0.01em]">
+              Delete “{confirming.name}”?
+            </h2>
+            <p className="mt-2 text-[13px] leading-[19px] text-[var(--ms-text-2)]">
+              The thread, every message and{" "}
+              {confirming.creative_count > 0
+                ? `all ${confirming.creative_count} creative`
+                : "any creative"}{" "}
+              go with it. Canon sheets stay — those belong to the workspace, not this campaign.
+              {confirming.spend_credits > 0 && (
+                <>
+                  {" "}
+                  The {confirming.spend_credits} credits already spent are not refunded.
+                </>
+              )}
+            </p>
+            <div className="mt-5 flex justify-end gap-2.5">
+              <button className="cb-btn cb-btn-ghost" onClick={() => setConfirming(null)} disabled={busy}>
+                Keep it
+              </button>
+              <button
+                className="cb-btn !bg-white !text-[var(--ms-bg)] !font-bold"
+                onClick={() => remove(confirming)}
+                disabled={busy}
+              >
+                {busy ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

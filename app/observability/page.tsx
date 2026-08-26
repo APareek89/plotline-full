@@ -73,7 +73,7 @@ export default function ObservabilityPage() {
             onClick={() => setOnlyFailed((v) => !v)}
             className={`rounded-[10px] border px-3 py-2 text-[12.5px] ${
               onlyFailed
-                ? "border-[var(--ms-danger,#E5312B)] text-[var(--ms-danger,#E5312B)]"
+                ? "border-[var(--ms-danger,#FFFFFF)] text-[var(--ms-danger,#FFFFFF)]"
                 : "border-[var(--ms-line,#2A3140)] text-[var(--ms-text-2,#A9B3C4)]"
             }`}
           >
@@ -89,7 +89,7 @@ export default function ObservabilityPage() {
         </div>
 
         {error && (
-          <p className="mt-4 rounded-[10px] border border-[var(--ms-warn,#E8A13C)] p-3 text-[13px] text-[var(--ms-warn,#E8A13C)]">
+          <p className="mt-4 rounded-[10px] border border-[var(--ms-text-2,#A6B0C0)] p-3 text-[13px] text-[var(--ms-text-2,#A6B0C0)]">
             {error.includes("404")
               ? "Observability is disabled on this server. Set PLOTLINE_DEBUG_OBSERVABILITY=1 (it exposes full prompts and payloads, so it stays off by default)."
               : error}
@@ -124,7 +124,7 @@ export default function ObservabilityPage() {
                   <span className="min-w-0">
                     <span className="mono text-[13px] font-semibold">{r.agent}</span>
                     {failed && (
-                      <span className="ml-2 rounded-[6px] border border-[var(--ms-danger,#E5312B)] px-1.5 py-0.5 text-[10px] text-[var(--ms-danger,#E5312B)]">
+                      <span className="ml-2 rounded-[6px] border border-[var(--ms-danger,#FFFFFF)] px-1.5 py-0.5 text-[10px] text-[var(--ms-danger,#FFFFFF)]">
                         {r.validation_errors.length} retry error{r.validation_errors.length === 1 ? "" : "s"}
                       </span>
                     )}

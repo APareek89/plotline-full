@@ -132,11 +132,21 @@ export function CampaignStyles() {
 .cb-surface { background: var(--ms-surface,#171B23); border: 1px solid var(--ms-line,#2A3140); }
 .cb-elev { background: var(--ms-elev,#1E242E); border: 1px solid var(--ms-line,#2A3140); }
 .cb-muted { color: var(--ms-text-2,#A6B0C0); }
-.cb-ok { color: var(--ms-ok,#39C36A); }
-.cb-warn { color: var(--ms-warn,#E8A13C); }
-.cb-danger { color: var(--ms-danger-text,#F98F89); }
+/* Blue and white only. ok/warn/danger keep their NAMES so every caller is
+   unchanged, but they resolve to accent / secondary / inverted — see the
+   token block in globals.css for why status stopped being a hue. */
+.cb-ok { color: var(--ms-ok-text,#A3AEFF); }
+.cb-warn { color: var(--ms-text-2,#A6B0C0); }
+.cb-danger { color: var(--ms-text,#FFFFFF); font-weight: 700; }
 .cb-accent-text { color: var(--ms-blue-text,#A3AEFF); }
-.cb-danger-strip { background: var(--ms-danger-wash,rgb(229 49 43 / 0.16)); border-left: 3px solid var(--ms-danger,#E5312B); }
+/* The one INVERTED surface in the app: white fill, dark type. Nothing else on
+   a dark screen is a solid white block, so this still shouts — and it owns its
+   own text colour, because the inherited .cb-danger white would vanish on it. */
+.cb-danger-strip {
+  background: var(--ms-danger-wash,#FFFFFF);
+  border-left: 3px solid var(--ms-danger,#FFFFFF);
+  color: var(--ms-bg,#0E1116) !important;
+}
 
 .cb-card {
   background: var(--ms-surface,#171B23);
@@ -180,7 +190,7 @@ button.cb-card:focus-visible { outline: 2px solid var(--ms-focus,#A3AEFF); outli
    composites to 2.11:1. One dim only, which lands it at 5.09:1. */
 .cb-prompt-inert:disabled { opacity: 1; }
 .cb-prompt-inert::placeholder { color: var(--ms-text-2,#A6B0C0); opacity: 1; }
-.cb-input[aria-invalid="true"] { border-color: var(--ms-danger,#E5312B); }
+.cb-input[aria-invalid="true"] { border-color: var(--ms-danger,#FFFFFF); }
 
 .cb-chip {
   display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; cursor: pointer;
@@ -198,7 +208,7 @@ button.cb-card:focus-visible { outline: 2px solid var(--ms-focus,#A3AEFF); outli
 
 .cb-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ms-text-2,#A6B0C0); }
 .cb-hint { font-size: 11.5px; color: var(--ms-text-2,#A6B0C0); }
-.cb-req { color: var(--ms-danger-text,#F98F89); }
+.cb-req { color: var(--ms-danger-text,#FFFFFF); }
 
 .cb-scrim { background: var(--ms-scrim,rgb(0 0 0 / 0.55)); }
 .cb-modal {

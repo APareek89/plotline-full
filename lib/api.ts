@@ -163,11 +163,30 @@ export interface ArtifactEnvelope {
   actions: ArtifactAction[];
 }
 
+// One tappable answer. `event` is the UserAction it fires — the option IS the
+// CTA, because the artifact panel is a read-only review surface and every
+// approve/regenerate/feedback is answered in the composer instead. An option
+// with no event is answer-only: it just contributes its label.
+export interface QuestionOption {
+  label: string;
+  event: string | null;
+  artifact_id: string | null;
+  primary: boolean;
+}
+
+export interface AgentQuestion {
+  text: string;
+  options: QuestionOption[];
+  multi: boolean;
+  free_text: boolean;
+  note: string | null;
+}
+
 export interface AgentMessage {
   thread_id: string;
   text: string;
   artifacts: ArtifactEnvelope[];
-  question: string | null;
+  question: AgentQuestion | null;
 }
 
 export interface ThreadMessage {
@@ -450,12 +469,15 @@ export const api = {
           upload_ids: uploadIds,
         }),
       }),
-    sendAction: (id: string, artifactId: string, event: string) =>
+    // `values` carries what a multi-select question actually chose. Without it
+    // an answer can only report THAT it was made, never with what — and the
+    // claims gate needs the subset, not the tap.
+    sendAction: (id: string, artifactId: string, event: string, values: string[] = []) =>
       req(`/api/threads/${id}/events`, {
         method: "POST",
         body: JSON.stringify({
           thread_id: id, type: "action",
-          action: { artifact_id: artifactId, event },
+          action: { artifact_id: artifactId, event, values },
         }),
       }),
     activity: (id: string, artifactId: string) =>
@@ -488,11 +510,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ name }),
       }),
-    saveBlock: (id: string, block: "product" | "campaign" | "brand", data: any) =>
-      req<{ context: CampaignContext; cards_done: CardsDone }>(
-        `/api/campaigns/${id}/blocks/${block}`,
-        { method: "PUT", body: JSON.stringify(data) }
-      ),
+    // Deletion is a real cascade server-side and returns what went with the
+    // campaign, so the caller can say so rather than guess.
+    remove: (id: string) =>
+      req<{ deleted: string } & Record<string, number>>(`/api/campaigns/${id}`,
+        { method: "DELETE" }),
     // system pipeline fills palette/font/logo/tagline; the user confirms/edits
     fetchBrand: (id: string, url: string) =>
       req<BrandExtract>(`/api/campaigns/${id}/brand/fetch`, {

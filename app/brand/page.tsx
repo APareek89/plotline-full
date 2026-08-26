@@ -85,7 +85,7 @@ export default function BrandPage() {
 
         {/* ERROR state, named explicitly — §12 rule 3 */}
         {error && (
-          <div className="card mt-5 border-l-[3px] border-l-[var(--ms-danger,#E5312B)] p-4">
+          <div className="card mt-5 border-l-[3px] border-l-[var(--ms-danger,#FFFFFF)] p-4">
             <p className="text-[13px] font-semibold">Can&apos;t reach the canon library</p>
             <p className="mt-1 text-[12.5px] text-[var(--ms-text-2,#A6B0C0)]">{error}</p>
             <button className="btn mt-3" onClick={() => void load()}>
@@ -190,7 +190,7 @@ export default function BrandPage() {
                               </p>
                             )}
                             {s.risk_notes?.length > 0 && (
-                              <p className="mt-1.5 border-l-2 border-[var(--ms-danger,#E5312B)] pl-2 text-[11px] text-[var(--ms-danger-text,#F98F89)]">
+                              <p className="mt-1.5 border-l-2 border-[var(--ms-danger,#FFFFFF)] pl-2 text-[11px] text-[var(--ms-danger-text,#FFFFFF)]">
                                 geometry risk: {s.risk_notes.join(", ")}
                               </p>
                             )}
