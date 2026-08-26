@@ -1444,9 +1444,23 @@ function CanonSheetCard({ artifact, onAction, busy }: CampaignArtifactProps) {
                 <MsChip>{s.kind}</MsChip>
               </div>
               <p className="mt-1 text-[12.5px]">{s.brief}</p>
+              {s.sheet_asset_id && (
+                // The sheet IS the artifact. The gate asks the user to confirm
+                // every panel is present, and an instruction to check something
+                // you cannot see is a dead end — the same shape as the brief
+                // that rendered with no buttons.
+                <img
+                  src={media(`/api/assets/${s.sheet_asset_id}/file`)}
+                  alt={`${s.id} reference sheet`}
+                  className="mt-2 w-full rounded-[8px] border border-[var(--ms-line,#2A2F3A)] object-contain"
+                />
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <MsChip tone={views.length && have === views.length ? "ok" : "warn"}>
-                  {have}/{views.length || "—"} views
+                <MsChip
+                  tone={views.length && have === views.length ? "ok" : "warn"}
+                  title="Panels this sheet was COMPOSED to contain. Nothing inspects the image — confirm them yourself before approving."
+                >
+                  {have} view{have === 1 ? "" : "s"} in one sheet
                 </MsChip>
                 <MsChip title="Reference slots this sheet consumes on a generation call (lint B3)">
                   {s.slot_cost} slot
