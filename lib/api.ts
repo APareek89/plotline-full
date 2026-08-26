@@ -153,6 +153,11 @@ export interface ArtifactAction {
   label: string;
   style: "primary" | "secondary" | "danger";
   event: string;
+  // Stamped server-side from ONE set of event names. The read-only detail
+  // panel offers only actions where this is false — a re-render is a cost
+  // event and belongs in the chat with its price attached. Never infer this
+  // client-side; that would be the same fact in two places again.
+  spends?: boolean;
 }
 
 export interface ArtifactEnvelope {
@@ -466,6 +471,25 @@ export type MediaRun = {
   campaign_name: string | null;
 };
 
+export type AssetMeta = {
+  id: string;
+  kind: string;
+  slot: string | null;
+  status: string;
+  cost: number;
+  name: string | null;
+  prompt: string | null;
+  settings: {
+    model?: string | null;
+    aspect_ratio?: string | null;
+    resolution?: string | null;
+    seed?: string | null;
+  };
+  refs: string[];
+  refs_dropped: string[];
+  file_url: string;
+};
+
 export const api = {
   health: () => req<any>("/health"),
   // TEMPORARY debug surface — structured node input/output across ALL runs.
@@ -478,6 +502,17 @@ export const api = {
   profile: {
     get: () => req<any>("/api/profile"),
     put: (data: any) => req<any>("/api/profile", { method: "PUT", body: JSON.stringify(data) }),
+  },
+  // The artifact detail rail. Everything here is already in the generation
+  // record — the panel SHOWS the prompt and settings, it never re-derives them.
+  assets: {
+    get: (id: string) => req<AssetMeta>(`/api/assets/${id}`),
+    rename: (id: string, name: string) =>
+      req<{ ok: boolean; name: string }>(`/api/assets/${id}`, {
+        method: "PATCH", body: JSON.stringify({ name }),
+      }),
+    remove: (id: string) => req<{ ok: boolean }>(`/api/assets/${id}`, { method: "DELETE" }),
+    fileUrl: (id: string) => `${API_URL}/api/assets/${id}/file`,
   },
   threads: {
     get: (id: string, afterSeq = 0) => req<Thread>(`/api/threads/${id}?after_seq=${afterSeq}`),

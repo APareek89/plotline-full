@@ -30,6 +30,7 @@ import {
   tabFor,
 } from "@/components/campaign-artifacts";
 import { CampaignStyles, PromptModal } from "@/components/campaign-blocks";
+import { ArtifactDetail } from "@/components/artifact-detail";
 
 const POLL_MS = 1200;
 const KIND_PREFIX = "plotline.threadkind.";
@@ -52,6 +53,8 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   // move it. Touching a tab yourself takes the wheel — an auto-switch that
   // yanks the view away while you are reading is the panel fighting you.
   const [tab, setTab] = useState<TabId>("brief");
+  // The artifact whose full-height detail view is open, if any.
+  const [detail, setDetail] = useState<ArtifactEnvelope | null>(null);
   const [following, setFollowing] = useState(true);
 
   const lastSeq = useRef(0);
@@ -423,7 +426,19 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
               {cards.map((a) => (
                 // review only — no onAction, so the card renders no buttons.
                 // The CTAs for this card are the options above the composer.
-                <CampaignArtifactCard key={a.id} artifact={a} readOnly />
+                // Clicking it opens the full-height detail view; that surface
+                // is read-only for anything that spends, for the same reason.
+                <div
+                  key={a.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${a.title}`}
+                  onClick={() => setDetail(a)}
+                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setDetail(a)}
+                  className="cursor-pointer rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ms-blue,#4B5BFF)]"
+                >
+                  <CampaignArtifactCard artifact={a} readOnly />
+                </div>
               ))}
             </div>
           ) : (
@@ -436,6 +451,20 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
           )}
         </div>
       </section>
+
+      {detail && (
+        <ArtifactDetail
+          artifact={detail}
+          threadId={threadId}
+          onClose={() => setDetail(null)}
+          onAction={(artifactId, event) => {
+            // The SAME UserAction the chat option fires. No second approval
+            // path — one fact, one representation.
+            api.threads.sendAction(threadId, artifactId, event).catch(() => undefined);
+            setDetail(null);
+          }}
+        />
+      )}
     </div>
   );
 }
