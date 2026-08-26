@@ -12,17 +12,25 @@
  * production build. Delete this directory and the nav entry to remove it.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { AgentRun, api } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AgentRun, MediaRun, api } from "@/lib/api";
+
+type Lens = "agents" | "media";
 
 export default function ObservabilityPage() {
   const [runs, setRuns] = useState<AgentRun[] | null>(null);
+  const [media, setMedia] = useState<MediaRun[] | null>(null);
+  const [spend, setSpend] = useState<{ total: number; by: Record<string, { renders: number; usd: number }> }>(
+    { total: 0, by: {} }
+  );
+  const [lens, setLens] = useState<Lens>("agents");
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [onlyFailed, setOnlyFailed] = useState(false);
+  const [live, setLive] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     api
       .agentRuns(300)
       .then((r) => {
@@ -30,8 +38,25 @@ export default function ObservabilityPage() {
         setError(null);
       })
       .catch((e) => setError((e as Error).message));
-  };
-  useEffect(load, []);
+    // Media is a SEPARATE question — "which provider served this render, and
+    // what did it charge" — so it loads alongside rather than replacing.
+    api
+      .mediaRuns(300)
+      .then((r) => {
+        setMedia(r.runs);
+        setSpend({ total: r.total_usd, by: r.by_provider });
+      })
+      .catch(() => setMedia([]));
+  }, []);
+  useEffect(load, [load]);
+
+  // Off by default: a debug surface that polls forever is a debug surface that
+  // makes its own noise in the log it is meant to show you.
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(load, 2000);
+    return () => clearInterval(t);
+  }, [live, load]);
 
   const shown = useMemo(() => {
     if (!runs) return [];
@@ -81,12 +106,97 @@ export default function ObservabilityPage() {
           </button>
           <button
             type="button"
+            onClick={() => setLive((v) => !v)}
+            title="Poll every 2s while you drive the app in another tab"
+            className={`rounded-[10px] border px-3 py-2 text-[12.5px] ${
+              live
+                ? "border-[var(--ms-blue,#4353FF)] text-[var(--ms-blue-text,#A3AEFF)]"
+                : "border-[var(--ms-line,#2A3140)] text-[var(--ms-text-2,#A9B3C4)]"
+            }`}
+          >
+            {live ? "● Live" : "Live off"}
+          </button>
+          <button
+            type="button"
             onClick={load}
             className="rounded-[10px] border border-[var(--ms-line,#2A3140)] px-3 py-2 text-[12.5px] text-[var(--ms-text-2,#A9B3C4)]"
           >
             Refresh
           </button>
         </div>
+
+        {/* two lenses on the same run: which NODE did what, and which PROVIDER
+            served the render. Distinct questions since PixelBin became primary
+            and fal became the fallback. */}
+        <div className="mt-3 flex items-center gap-2 border-b border-[var(--ms-line,#2A3140)] pb-2">
+          {(["agents", "media"] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => setLens(l)}
+              className={`rounded-[8px] px-3 py-1.5 text-[13px] capitalize ${
+                lens === l
+                  ? "bg-[var(--ms-elev,#1E242E)] font-semibold text-[var(--ms-text,#fff)]"
+                  : "text-[var(--ms-text-2,#A9B3C4)]"
+              }`}
+            >
+              {l}
+              <span className="mono ml-1.5 text-[10.5px] opacity-70">
+                {l === "agents" ? (runs?.length ?? 0) : (media?.length ?? 0)}
+              </span>
+            </button>
+          ))}
+          {lens === "media" && (
+            <span className="mono ml-auto text-[11.5px] text-[var(--ms-text-2,#A9B3C4)]">
+              ${spend.total.toFixed(2)} total ·{" "}
+              {Object.entries(spend.by)
+                .map(([p, v]) => `${p} ${v.renders}× $${v.usd.toFixed(2)}`)
+                .join(" · ") || "nothing rendered yet"}
+            </span>
+          )}
+        </div>
+
+        {lens === "media" && (
+          <div className="mt-4 space-y-1.5">
+            {(media ?? []).map((m) => (
+              <div
+                key={m.id}
+                className="rounded-[10px] border border-[var(--ms-line,#2A3140)] bg-[var(--ms-surface,#171B23)] px-3 py-2"
+              >
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span
+                    className={`mono rounded-[5px] px-1.5 py-0.5 text-[10.5px] ${
+                      m.provider === "pixelbin"
+                        ? "bg-[var(--ms-blue-wash,rgb(67_83_255/0.16))] text-[var(--ms-blue-text,#A3AEFF)]"
+                        : "bg-[var(--ms-elev,#1E242E)] text-[var(--ms-text-2,#A9B3C4)]"
+                    }`}
+                  >
+                    {m.provider}
+                  </span>
+                  <span className="mono text-[12.5px] font-semibold">{m.event}</span>
+                  <span className="mono text-[11.5px] text-[var(--ms-text-2,#A9B3C4)]">
+                    {m.model ?? "—"}
+                  </span>
+                  <span className="mono ml-auto text-[11.5px] text-[var(--ms-text-2,#A9B3C4)]">
+                    {m.campaign_name ? `${m.campaign_name} · ` : ""}
+                    {m.cost ? `$${Number(m.cost).toFixed(3)}` : "$0"}
+                  </span>
+                </div>
+                {m.prompt && (
+                  <p className="mt-1 line-clamp-2 text-[12px] text-[var(--ms-text-2,#A9B3C4)]">
+                    {m.prompt}
+                  </p>
+                )}
+              </div>
+            ))}
+            {media !== null && !media.length && (
+              <p className="mt-6 text-[13px] text-[var(--ms-text-2,#A9B3C4)]">
+                Nothing rendered yet. With MOCK_MEDIA=1 the pipeline still runs and logs here at $0,
+                so an empty list means no generate stage has been reached — not that media is broken.
+              </p>
+            )}
+          </div>
+        )}
 
         {error && (
           <p className="mt-4 rounded-[10px] border border-[var(--ms-text-2,#A6B0C0)] p-3 text-[13px] text-[var(--ms-text-2,#A6B0C0)]">
@@ -107,7 +217,7 @@ export default function ObservabilityPage() {
           </p>
         )}
 
-        <div className="mt-4 space-y-2">
+        <div className={`mt-4 space-y-2 ${lens === "agents" ? "" : "hidden"}`}>
           {shown.map((r) => {
             const isOpen = open === r.run_id;
             const failed = (r.validation_errors ?? []).length > 0;
@@ -144,6 +254,14 @@ export default function ObservabilityPage() {
                       <p className="text-[12px] text-[var(--ms-text-2,#A9B3C4)]">
                         <span className="mono uppercase tracking-[0.1em]">cited</span> ·{" "}
                         {r.cited_source_ids.join(", ")}
+                      </p>
+                    )}
+                    {/* Captured off the response, so this can never claim a
+                        search that did not happen. Absent = none issued. */}
+                    {!!(r.searched ?? []).length && (
+                      <p className="text-[12px] text-[var(--ms-blue-text,#A3AEFF)]">
+                        <span className="mono uppercase tracking-[0.1em]">searched</span> ·{" "}
+                        {r.searched.join(" · ")}
                       </p>
                     )}
                     {failed && (

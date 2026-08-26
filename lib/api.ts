@@ -440,11 +440,30 @@ export type AgentRun = {
   validation_errors: string[];
   tool_calls: { tool: string; input: unknown; result_count?: number }[];
   cited_source_ids: string[];
+  /** Web queries this node actually issued, captured from the response. An
+   *  empty list means no search happened — it never claims one that didn't. */
+  searched: string[];
   thread_id: string | null;
   campaign_name: string | null;
   node_input: unknown;
   node_output: unknown;
   started_at: number;
+};
+
+/** One media render. `provider` is split off `model`, which carries a
+ *  "pixelbin:" / "fal:" prefix, so a silent failover is visible in the row. */
+export type MediaRun = {
+  id: string;
+  thread_id: string | null;
+  asset_id: string | null;
+  event: string;
+  prompt: string | null;
+  model: string | null;
+  provider: string;
+  seed: string | null;
+  cost: number;
+  created_at: number;
+  campaign_name: string | null;
 };
 
 export const api = {
@@ -453,6 +472,9 @@ export const api = {
   // Dev-only server-side (MOCK_LLM or PLOTLINE_DEBUG_OBSERVABILITY).
   agentRuns: (limit = 200) =>
     req<{ runs: AgentRun[] }>(`/api/agent-runs?limit=${limit}`),
+  mediaRuns: (limit = 200) =>
+    req<{ runs: MediaRun[]; total_usd: number; by_provider: Record<string, { renders: number; usd: number }> }>(
+      `/api/media-runs?limit=${limit}`),
   profile: {
     get: () => req<any>("/api/profile"),
     put: (data: any) => req<any>("/api/profile", { method: "PUT", body: JSON.stringify(data) }),
