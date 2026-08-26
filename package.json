@@ -4,14 +4,15 @@
   "private": true,
   "scripts": {
     "predev": "bash ../plotline-api/run-detached.sh",
-    "dev": "next dev -p 3100",
+    "dev": "bash ./scripts/dev.sh",
     "dev:web": "next dev -p 3100",
     "stack:status": "bash ../plotline-api/run-detached.sh --status",
     "stack:stop": "bash ../plotline-api/run-detached.sh --stop",
     "build": "next build",
     "start": "next start -p 3100",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:restart": "lsof -ti :3100 | xargs -r kill; sleep 1; next dev -p 3100"
   },
   "dependencies": {
     "next": "^15.4.6",
