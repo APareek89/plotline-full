@@ -385,11 +385,24 @@ export interface ClaimsExtract {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      cache: "no-store",
+    });
+  } catch (cause) {
+    // A network-level failure surfaces as the browser's "Failed to fetch",
+    // which tells the user nothing and looks like an app bug. In a locally
+    // hosted app the cause is almost always that the API is not running, so
+    // say that and say how to start it — an error message that does not lead
+    // anywhere is a dead end dressed as information.
+    throw new Error(
+      `Can't reach the API at ${API_URL}. Start it with "bash run.sh" in ` +
+        `plotline-api, then retry. (${cause instanceof Error ? cause.message : String(cause)})`,
+    );
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${res.status} ${res.statusText}: ${body.slice(0, 300)}`);
