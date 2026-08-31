@@ -1,5 +1,5 @@
 # Handoff.MD — Plotline Marketing Studio (one repo: plotline-full)
-last-synced: `MERGE_SHA`
+last-synced: `bf2e029`
 > AGENT: read this fully at session start. FIRST run `git log --oneline <last-synced>..HEAD`
 > and reconcile anything changed underneath it before trusting anything below. Then open
 > with the pending points.
