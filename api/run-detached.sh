@@ -37,7 +37,7 @@ if [ "$1" = "--stop" ]; then
   pkill -f "uvicorn devrag.server:app" 2>/dev/null || true
   pkill -f "plotline_rag" 2>/dev/null || true
   sleep 1
-  echo "stopped (web on :3100 is left alone — it is a separate repo)"
+  echo "stopped (web on :3100 is left alone — stop it with Ctrl-C in its own terminal)"
   status
   exit 0
 fi
@@ -99,5 +99,5 @@ if lsof -ti :3100 >/dev/null 2>&1; then
   echo "The web app is ALREADY running → http://localhost:3100"
   echo "(so 'npm run dev' will exit with EADDRINUSE — that means 'already up', not broken)"
 else
-  echo "The web app is a separate repo: cd ../plotline-web && npm run dev   (:3100)"
+  echo "Start the web app with: cd ../web && npm run dev   (:3100)"
 fi

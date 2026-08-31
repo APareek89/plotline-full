@@ -1,21 +1,22 @@
 # plotline-api — agent instructions
 
-Repo scope (PRD §7 build handoff): orchestrator + agents + validators + Next.js sibling
-(`../plotline-web`). Consumes the plotline-rag HTTP contract on :8787 — NEVER reimplement
-retrieval/embeddings/KB ingestion here; never modify Codex's repos (plotline-kb, plotline-rag).
+Directory scope: orchestrator + agents + validators. The UI is `../web` in this same
+repo. `rag/` is an importable package served over HTTP on :8788; `devrag/` is a
+sample-corpus stub on :8787 and exists to be deleted once a real corpus serves
+asset:/stat:/trend:. The Codex-lane rule that once forbade touching retrieval no longer
+applies — that lane is closed and rag/ lives here.
 Agents get retrieval tools only — no network tools registered, ever.
 
 Product brief: `docs/PRD-v1.txt` (canonical HTML: `docs/PRD-v1.html`).
 Phase-1 env: local-only (SQLite, dev RAG stub) — no AWS in this lane, free tier only.
 
 ## Power Coding (auto — do not remove without asking the user)
-At session start read Handoff.MD (project brain for BOTH repos); FIRST run
-`git log --oneline <its last-synced sha>..HEAD` in both ~/Documents/plotline-api and
-~/Documents/plotline-web and reconcile anything changed underneath it; then open with its
-pending points. Update Handoff.MD before every git checkpoint commit and at the end of
+At session start read Handoff.MD (the project brain); FIRST run
+`git log --oneline <its last-synced sha>..HEAD` and reconcile anything changed
+underneath it; then open with its pending points. Update Handoff.MD before every git checkpoint commit and at the end of
 every phase (low context is a secondary trigger) — snapshot not journal, re-stamp
 `last-synced` with HEAD; if context was the trigger, tell the user to start fresh
-("Refer to Handoff.MD in ~/Documents/plotline-api and begin"). When Handoff exceeds
+("Refer to Handoff.MD in ~/Documents/plotline-full/api and begin"). When Handoff exceeds
 ~40 lines or ~15 ✅ items, collapse ✅ into one "Shipped:" line, detail to Learning.MD.
 Log flow changes / user-reported bugs in Learning.MD (5-whys entry format).
 Read Loop.MD every session and obey its `status:` machine — when the first working

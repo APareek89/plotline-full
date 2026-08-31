@@ -5,14 +5,14 @@ Paste everything below the line into a fresh Claude Code session.
 ---
 
 Continue the **Plotline Marketing Studio** build. Two repos:
-`~/Documents/plotline-api` (FastAPI + agents) and `~/Documents/plotline-web` (Next.js).
+`~/Documents/plotline-full/api` (FastAPI + agents) and `~/Documents/plotline-full/web` (Next.js).
 
 Read in this order before touching code:
 
-1. `~/Documents/plotline-api/Handoff.MD` — the project brain for both repos. It carries
+1. `~/Documents/plotline-full/api/Handoff.MD` — the project brain for both repos. It carries
    `last-synced` shas; run `git log --oneline <sha>..HEAD` in **both** repos and reconcile
    any drift before trusting it.
-2. `~/Documents/plotline-api/Learning.MD` — root causes already found, in 5-whys form.
+2. `~/Documents/plotline-full/api/Learning.MD` — root causes already found, in 5-whys form.
    Check it before debugging anything; the answer may be there. Read at least the last three
    entries — one of them explains why a whole class of bug keeps recurring.
 3. `docs/v3-ENHANCEMENT-BRIEF.md`, `docs/v3-ARTIFACT-SPEC.md`, `docs/v3-COUNCIL-DOCTRINE.md`
@@ -27,7 +27,7 @@ Pipeline: cards → **brief** → options → templates(+style block) → **scri
 All six new artifact types render with working actions; My Brand hosts the canon library.
 
 **Run it FIRST, before anything else — ONE command:**
-`cd ~/Documents/plotline-web && npm run dev`. Its `predev` starts api :8600 + rag :8788 +
+`cd ~/Documents/plotline-full/web && npm run dev`. Its `predev` starts api :8600 + rag :8788 +
 devrag :8787 detached via the API repo's `run-detached.sh` (idempotent), then the web on
 :3100. `npm run stack:status` / `stack:stop` for the rest. Do NOT use `run.sh` from a tool
 call — it runs in the foreground and traps EXIT to kill devrag, so the whole stack dies when

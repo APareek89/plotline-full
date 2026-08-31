@@ -17,7 +17,7 @@ status: offered
 ≤2 regenerations. Exit gate: ≥55% of test users approve a plan in ≤2 regenerations.
 
 ## Rung 1 — the project's own tests (adopt, run first, don't duplicate below)
-Rung 1 (existing tests): `cd ~/Documents/plotline-api && .venv/bin/python -m pytest`
+Rung 1 (existing tests): `cd ~/Documents/plotline-full/api && .venv/bin/python -m pytest`
 NO path argument: `tests/` overrides pytest.ini's `testpaths = tests rag/tests` and
 silently skips 12 — a rung that under-reports is worse than no rung.
 CI: none

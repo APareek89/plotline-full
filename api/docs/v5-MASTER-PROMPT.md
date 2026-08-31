@@ -7,7 +7,7 @@ fresh Claude Code session. Medium effort is fine — the context lives on disk
 ---
 
 You are continuing the **Plotline Marketing Studio** build.
-Repos: `~/Documents/plotline-api` (FastAPI + agents) · `~/Documents/plotline-web` (Next.js).
+Repos: `~/Documents/plotline-full/api` (FastAPI + agents) · `~/Documents/plotline-full/web` (Next.js).
 
 Work through the stages below **strictly in order**. After EVERY stage run the **Code QA
 gate** and report to me before starting the next one. Do not batch stages. Do not skip
@@ -18,16 +18,16 @@ will reach Stage 6, stop, and wait.
 
 ## READ FIRST (before any code)
 
-1. `~/Documents/plotline-api/Handoff.MD` — the project brain. It carries `last-synced`
+1. `~/Documents/plotline-full/api/Handoff.MD` — the project brain. It carries `last-synced`
    shas: run `git log --oneline <sha>..HEAD` in **both** repos and reconcile before
    trusting anything in it.
-2. `~/Documents/plotline-api/Learning.MD` — root causes in 5-whys form. **Read the last
+2. `~/Documents/plotline-full/api/Learning.MD` — root causes in 5-whys form. **Read the last
    six entries.** They are all the same species and will save you a day.
 3. `~/Documents/Reference material/` — MY TARGET for this phase. Open every screenshot
    and both `.md` files before writing a line.
 4. `docs/v3-ENHANCEMENT-BRIEF.md` + `docs/v3-ARTIFACT-SPEC.md` — governing specs.
 
-**Start the stack:** `cd ~/Documents/plotline-web && npm run dev` brings up all four
+**Start the stack:** `cd ~/Documents/plotline-full/web && npm run dev` brings up all four
 services (`predev` runs the API repo's `run-detached.sh`). `npm run stack:status` to
 check. **Never `npm run build`** — it clobbers dev's `.next`. Use `npm run typecheck`.
 
@@ -35,10 +35,10 @@ check. **Never `npm run build`** — it clobbers dev's `.next`. Use `npm run typ
 
 ## THE CODE QA GATE — run after EVERY stage, no exceptions
 
-1. `cd ~/Documents/plotline-api && .venv/bin/python -m pytest` — **no path argument.**
+1. `cd ~/Documents/plotline-full/api && .venv/bin/python -m pytest` — **no path argument.**
    Passing `tests/` overrides `pytest.ini`'s `testpaths` and silently skips 12 tests.
    The count must be ≥ the floor you started the stage with. It never goes down.
-2. `cd ~/Documents/plotline-web && npm run typecheck`.
+2. `cd ~/Documents/plotline-full/web && npm run typecheck`.
 3. **Write at least one test for what you just built, then verify it BITES** — stash the
    fix, watch the test fail, restore. A test that passes without the fix proves nothing.
    `git stash push -q <file>` / `git stash pop -q`.

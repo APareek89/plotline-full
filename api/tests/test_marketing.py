@@ -2905,7 +2905,7 @@ def test_every_artifact_the_server_emits_has_a_renderer_registered():
     W1 table. This one crosses a language boundary, so the guard lives here and
     reads the TypeScript.
     """
-    web = Path(__file__).resolve().parents[2] / "plotline-web"
+    web = Path(__file__).resolve().parents[2] / "web"
     source = (web / "components" / "campaign-artifacts.tsx").read_text()
 
     # split on "= [" not "]": the declaration is `: ArtifactType[] = [`, and the
@@ -4005,10 +4005,12 @@ def test_the_detail_panel_reads_the_flag_and_does_not_keep_its_own_list():
     """A Python test reading TypeScript — the same guard shape as the renderer
     allowlist, for the same reason: two representations of one fact need
     something comparing them, even across a language boundary."""
-    src = (Path(__file__).resolve().parents[2] / "plotline-web"
+    src = (Path(__file__).resolve().parents[2] / "web"
            / "components" / "artifact-detail.tsx")
-    if not src.exists():
-        pytest.skip("web repo not present next to this one")
+    # No skip-if-missing any more. When web was a separate repo this guard had
+    # to tolerate its absence, which meant that on a checkout of the API alone
+    # the drift check silently did not run — exactly where you would most want
+    # it. One repo, so the file is always here, so the guard always fires.
     text = src.read_text()
     # Comments are prose, not behaviour. A note saying "Select & edit is Phase 2
     # and is not built" must not read as the control being built — a guard that

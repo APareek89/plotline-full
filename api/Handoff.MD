@@ -1,8 +1,10 @@
-# Handoff.MD — Plotline Marketing Studio (plotline-api + plotline-web)
-last-synced: `847f1c4` (plotline-api) · `3bfbda4` (plotline-web)
+# Handoff.MD — Plotline Marketing Studio (one repo: plotline-full)
+last-synced: `MERGE_SHA`
 > AGENT: read this fully at session start. FIRST run `git log --oneline <last-synced>..HEAD`
-> in BOTH repos (~/Documents/plotline-api, ~/Documents/plotline-web) and reconcile before
-> trusting anything below. Then open with the pending points.
+> and reconcile anything changed underneath it before trusting anything below. Then open
+> with the pending points.
+> REPO: `~/Documents/plotline-full` — `api/` (FastAPI, rag, devrag) and `web/` (Next.js).
+> Merged 2026-08-31 from plotline-api + plotline-web; both histories preserved.
 > UPDATE before every checkpoint commit and at end of phase. Snapshot, not journal.
 > Cap: >~40 lines or ~15 ✅ → collapse ✅ into one "Shipped:" line.
 
@@ -188,7 +190,7 @@ of the four council calls, which is the main reason it exists.
   weaken one; re-point only when an INVARIANT changed by owner decision, and say so.
 - ✅ Local stack: api :8600 · rag :8788 · devrag :8787 · web :3100. `MOCK_LLM=0`,
   real key in `.env`.
-  **Start it — ONE command:** `cd ~/Documents/plotline-web && npm run dev`. Its `predev`
+  **Start it — ONE command:** `cd ~/Documents/plotline-full/web && npm run dev`. Its `predev`
   runs the API repo's `run-detached.sh`, which is idempotent, so this brings up all four
   from cold. `npm run stack:status` / `stack:stop` for the rest.
   `bash run.sh` still works but runs in the FOREGROUND and
