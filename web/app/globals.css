@@ -1,0 +1,465 @@
+@import "tailwindcss";
+
+/* ── Plotline design tokens ─────────────────────────────────────────────
+   DS component grammar (nov-*): radii 12/16/20, block/tile patterns, chips,
+   dashed upload tiles, prompt-bar container r20 — with Plotline's own type
+   and palette. DS fonts/colors (Inter, #6933fa family) deliberately NOT used.
+   Plan surfaces light (Linear/Notion density); studio surfaces dark (Phase 2). */
+
+:root {
+  /* palette — "ink & cobalt" */
+  --paper: #faf9f6;
+  --card: #ffffff;
+  --ink: #16151a;
+  --ink-soft: #4c4854;
+  --muted: #77717f;
+  --line: #e7e4de;
+  --line-strong: #d5d1c8;
+  --accent: #2946e5;
+  --accent-deep: #1f38c7;
+  --accent-wash: #eef0fe;
+  --dark: #131217;
+  --dark-card: #1c1a22;
+  --dark-line: #2c2933;
+
+  /* evidence tags */
+  --ref: #0e7a5f;
+  --ref-wash: #e7f4ef;
+  --stat: #1e5fbf;
+  --stat-wash: #e9f1fc;
+  --trend: #b45309;
+  --trend-wash: #fbf0e1;
+  --principle: #8a8494;
+  --principle-wash: #f1eff4;
+
+  /* ratings + status */
+  --high: #0e7a5f;
+  --med: #b45309;
+  --low: #c2382e;
+  --low-wash: #fdecea;
+
+  /* radii — DS grammar */
+  --r-chip: 12px;
+  --r-card: 16px;
+  --r-modal: 20px;
+
+  --font-display: "Avenir Next", "Futura", "Segoe UI", sans-serif;
+  --font-body: "Avenir Next", -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+/* ── Marketing Studio tokens (v2 §THEME) ────────────────────────────────
+   Dark surface, blue accent, white text. Purely ADDITIVE: the :root block
+   above is untouched, so every Phase-1 light screen renders exactly as it
+   did. Nothing here paints anything until a page puts `.ms-dark` in the
+   document (see the .ms-dark section at the foot of this file).
+
+   Computed WCAG 2.1 contrast — text 18.91:1 on --ms-bg, 17.25:1 on
+   --ms-surface, 15.59:1 on --ms-elev; --ms-text-2 7.88:1 on --ms-surface;
+   #fff 5.36:1 on --ms-blue.
+
+   The derived tokens below exist because v2 gives ONE value to roles that
+   split on a dark surface: --ms-blue reads 3.22:1 as type and --ms-danger
+   3.95:1, so both are fill-only and get a lightened text twin. Same story
+   for borders — --ms-line is a divider (decorative), --ms-line-strong is the
+   3:1 boundary WCAG 1.4.11 wants around an actual control. */
+
+:root {
+  /* v2 palette — verbatim */
+  --ms-bg: #0E1116;
+  --ms-surface: #171B23;
+  --ms-elev: #1E242E;
+  --ms-line: #2A3140;
+  --ms-text: #FFFFFF;
+  --ms-text-2: #A6B0C0;
+  --ms-blue: #4353FF;
+  --ms-blue-hover: #5A6AFF;
+
+  /* ── BLUE AND WHITE ONLY (owner decision 2026-08-26) ──────────────────
+     Green, amber and red are gone as HUES. The status roles are kept as
+     tokens rather than deleted, because ~40 components ask for them by name
+     and re-pointing each one is how a stray green survives in a corner.
+
+     Status now reads by WEIGHT and CONTRAST instead of colour:
+       ok      → the blue accent, same as any other affirmative
+       warn    → plain secondary text; it is a note, not an alarm
+       danger  → INVERTED, white fill under dark type. Nothing else on a
+                 dark screen is a solid white block, so a blocking finding
+                 is still the loudest thing in the view — louder than red
+                 was, and it survives greyscale and colour-blindness, which
+                 the old red/green pair did not.
+     Honesty was never carried by hue: a QC row says "blocking" / "not run"
+     / "n/a" in words, and those words are the source of truth. */
+  --ms-ok: var(--ms-blue);
+  --ms-warn: var(--ms-text-2);
+  --ms-danger: #FFFFFF;
+
+  /* derived — role splits the palette doesn't cover (ratios vs --ms-surface) */
+  --ms-text-soft: #CBD3E0;      /* 11.44:1 — body tier between text and text-2 */
+  --ms-line-strong: #6B7589;    /*  3.72:1 — control borders (WCAG 1.4.11)     */
+  --ms-blue-text: #A3AEFF;      /*  8.26:1 — accent as TYPE, --ms-blue is fill */
+  --ms-blue-hover-solid: #3E4CE6; /* 6.21:1 under #fff — see the hover note    */
+  --ms-ok-text: var(--ms-blue-text);
+  --ms-danger-text: #FFFFFF;    /* 18.91:1 — danger as TYPE is simply loudest  */
+  --ms-focus: var(--ms-blue-text);
+
+  /* tinted fills — each composites to ≥5.6:1 under its own text token */
+  --ms-blue-wash: rgb(67 83 255 / 0.16);
+  --ms-ok-wash: var(--ms-blue-wash);
+  --ms-warn-wash: rgb(166 176 192 / 0.14);
+  /* the one inverted surface in the app — dark type goes ON this */
+  --ms-danger-wash: #FFFFFF;
+  --ms-neutral-wash: rgb(166 176 192 / 0.16);
+
+  --ms-scrim: rgb(0 0 0 / 0.55);
+  --ms-shadow: 0 16px 48px rgb(0 0 0 / 0.55);
+  --ms-r-pill: 999px;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-wash: var(--accent-wash);
+  --color-dark: var(--dark);
+  --color-dark-card: var(--dark-card);
+  --color-dark-line: var(--dark-line);
+  --color-ref: var(--ref);
+  --color-ref-wash: var(--ref-wash);
+  --color-stat: var(--stat);
+  --color-stat-wash: var(--stat-wash);
+  --color-trend: var(--trend);
+  --color-trend-wash: var(--trend-wash);
+  --color-principle: var(--principle);
+  --color-principle-wash: var(--principle-wash);
+  --color-high: var(--high);
+  --color-med: var(--med);
+  --color-low: var(--low);
+  --color-low-wash: var(--low-wash);
+  --radius-chip: var(--r-chip);
+  --radius-card: var(--r-card);
+  --radius-modal: var(--r-modal);
+  --radius-pill: var(--ms-r-pill);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  /* Marketing Studio utilities — bg-ms-surface, text-ms-text-2, border-ms-line,
+     bg-ms-blue, text-ms-blue-text, bg-ms-warn-wash, rounded-pill, … These are
+     opt-in: they resolve the same on light and dark pages, so a legacy screen
+     that never types them is unaffected. */
+  --color-ms-bg: var(--ms-bg);
+  --color-ms-surface: var(--ms-surface);
+  --color-ms-elev: var(--ms-elev);
+  --color-ms-line: var(--ms-line);
+  --color-ms-line-strong: var(--ms-line-strong);
+  --color-ms-text: var(--ms-text);
+  --color-ms-text-2: var(--ms-text-2);
+  --color-ms-text-soft: var(--ms-text-soft);
+  --color-ms-blue: var(--ms-blue);
+  --color-ms-blue-hover: var(--ms-blue-hover);
+  --color-ms-blue-hover-solid: var(--ms-blue-hover-solid);
+  --color-ms-blue-text: var(--ms-blue-text);
+  --color-ms-blue-wash: var(--ms-blue-wash);
+  --color-ms-ok: var(--ms-ok);
+  --color-ms-ok-wash: var(--ms-ok-wash);
+  --color-ms-warn: var(--ms-warn);
+  --color-ms-warn-wash: var(--ms-warn-wash);
+  --color-ms-danger: var(--ms-danger);
+  --color-ms-danger-text: var(--ms-danger-text);
+  --color-ms-danger-wash: var(--ms-danger-wash);
+  --color-ms-neutral-wash: var(--ms-neutral-wash);
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* ── shared primitives ── */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.chip-select {
+  cursor: pointer;
+  user-select: none;
+  transition: all 120ms ease;
+}
+.chip-select:hover { border-color: var(--accent); color: var(--accent); }
+.chip-select[data-on="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+.upload-tile {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-card);
+  background: var(--card);
+  transition: border-color 120ms ease, background 120ms ease;
+  cursor: pointer;
+}
+.upload-tile:hover { border-color: var(--accent); background: var(--accent-wash); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--r-chip);
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 8px 16px;
+  transition: all 120ms ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-deep); }
+.btn-ghost { background: transparent; border-color: var(--line-strong); color: var(--ink-soft); }
+.btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.req { color: var(--low); }
+.opt { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+.input {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-chip);
+  background: var(--card);
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.input:focus { border-color: var(--accent); }
+.input::placeholder { color: var(--muted); opacity: 0.8; }
+
+.guideline { font-size: 12px; color: var(--muted); }
+
+/* evidence tag pills */
+.ev { border-radius: 8px; padding: 1px 7px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.ev-REF { background: var(--ref-wash); color: var(--ref); }
+.ev-STAT { background: var(--stat-wash); color: var(--stat); }
+.ev-TREND { background: var(--trend-wash); color: var(--trend); }
+.ev-PRINCIPLE { background: var(--principle-wash); color: var(--principle); font-weight: 500; }
+
+.rating-H { color: var(--high); font-weight: 700; }
+.rating-M { color: var(--med); font-weight: 700; }
+.rating-L { color: var(--low); font-weight: 700; }
+
+.mono { font-family: var(--font-mono); font-size: 11.5px; }
+
+/* drag & drop */
+.dragging { opacity: 0.4; }
+.drop-target { outline: 2px dashed var(--accent); outline-offset: 2px; }
+
+::selection { background: var(--accent-wash); }
+
+/* Addendum-01 §04: the ONE signature transition — form → summary collapse.
+   ≤300ms; prefers-reduced-motion kills it. */
+.anim-morph { animation: morph-in 280ms ease-out; }
+@keyframes morph-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-morph { animation: none; }
+}
+
+/* ── .ms-dark — the scoped dark surface (v2 §THEME) ──────────────────────
+   HOW SCOPING WORKS. A Marketing Studio screen wraps itself in `.ms-dark`
+   (or a route-group layout puts the class on <body>). Two selectors then
+   switch the theme on:
+
+     .ms-dark            — the wrapper and everything inside it
+     html:has(.ms-dark)  — the whole document *when* such a wrapper exists,
+                           which is what lets the shared <header> in
+                           layout.tsx go dark on MS routes without a client
+                           component or a pathname check
+
+   The switch is the token remap below. Because the @theme block above is
+   `inline`, every Tailwind colour utility compiles to `var(--paper)` /
+   `var(--line)` / … rather than a frozen hex — so re-declaring those aliases
+   here re-skins `.card`, `.chip`, `.input`, `.btn`, `bg-paper`, `text-muted`,
+   `border-line` and the rest in one move, with no rule duplication.
+
+   WHY IT CANNOT LEAK. Every selector in this section is gated on `.ms-dark`
+   being present in the document. A Phase-1 page never renders it, so `:root`
+   stays light and none of these rules match. Deleting the wrapper is the
+   whole rollback. */
+
+.ms-dark,
+html:has(.ms-dark) {
+  color-scheme: dark;
+
+  /* surfaces + type */
+  --paper: var(--ms-bg);
+  --card: var(--ms-surface);
+  --ink: var(--ms-text);
+  --ink-soft: var(--ms-text-soft);
+  --muted: var(--ms-text-2);
+  --line: var(--ms-line);
+  --line-strong: var(--ms-line-strong);
+
+  /* accent — the TEXT twin, because `--accent` is read by 15 `text-accent`
+     call sites and only 5 `bg-accent` ones; the solid-fill cases are bridged
+     at the foot of this file. */
+  --accent: var(--ms-blue-text);
+  --accent-deep: var(--ms-blue-text);
+  --accent-wash: var(--ms-blue-wash);
+
+  /* the light theme's inverted band is just another elevation here */
+  --dark: var(--ms-elev);
+  --dark-card: var(--ms-elev);
+  --dark-line: var(--ms-line);
+
+  /* evidence tags */
+  --ref: var(--ms-ok);
+  --ref-wash: var(--ms-ok-wash);
+  --stat: var(--ms-blue-text);
+  --stat-wash: var(--ms-blue-wash);
+  --trend: var(--ms-warn);
+  --trend-wash: var(--ms-warn-wash);
+  --principle: var(--ms-text-2);
+  --principle-wash: var(--ms-neutral-wash);
+
+  /* ratings + status */
+  --high: var(--ms-ok);
+  --med: var(--ms-warn);
+  --low: var(--ms-danger-text);
+  --low-wash: var(--ms-danger-wash);
+
+  /* Two Phase-1 status pills reach past the token system into Tailwind's raw
+     palette (`!text-amber-700` on the PROVISIONAL chip, `!border-emerald-600`
+     on Ready). Those compile to `var(--color-amber-700) !important`, so the
+     only override that beats them is the variable itself — an `!important`
+     rule of ours would lose, because unlayered important ranks BELOW the
+     utilities layer. Re-point the swatch and the chip reads on dark. */
+  --color-amber-500: var(--ms-warn);
+  --color-amber-700: var(--ms-warn);
+  --color-emerald-600: var(--ms-ok);
+  --color-emerald-700: var(--ms-ok);
+
+  scrollbar-color: var(--ms-line-strong) var(--ms-bg);
+  scrollbar-width: thin;
+}
+
+.ms-dark {
+  background: var(--ms-bg);
+  color: var(--ms-text);
+}
+
+/* ── component deltas ──
+   Only the cases where dark needs a different SHAPE, not just a different
+   value — everything else already fell out of the remap above. */
+
+/* chips and inputs sit one step up from the card they live on */
+:is(.ms-dark, html:has(.ms-dark)) .chip { background: var(--ms-elev); }
+:is(.ms-dark, html:has(.ms-dark)) .input { background: var(--ms-elev); }
+:is(.ms-dark, html:has(.ms-dark)) .upload-tile { background: transparent; }
+
+/* placeholders — --ms-text-2 at 0.8 over the --ms-elev field: 5.09:1 measured
+   (5.49:1 where a field sits directly on --ms-surface) */
+:is(.ms-dark, html:has(.ms-dark)) ::placeholder {
+  color: var(--ms-text-2);
+  opacity: 0.8;
+}
+
+/* primary actions are blue pills (v2 §THEME). The whole row goes pill so
+   Generate and its ghost neighbour don't disagree about their corners. */
+:is(.ms-dark, html:has(.ms-dark)) .btn { border-radius: var(--ms-r-pill); }
+:is(.ms-dark, html:has(.ms-dark)) .btn-primary {
+  background: var(--ms-blue);
+  color: var(--ms-text);
+  border-color: transparent;
+}
+/* #fff on --ms-blue is 5.36:1 but on --ms-blue-hover only 4.25:1, so the v2 hex
+   can't be the fill under white type. --ms-blue-hover stays in the token block
+   verbatim (it is the palette); white-on-blue hovers take the solid twin. */
+:is(.ms-dark, html:has(.ms-dark)) .btn-primary:hover { background: var(--ms-blue-hover-solid); }
+:is(.ms-dark, html:has(.ms-dark)) .btn-ghost { color: var(--ms-text-soft); }
+:is(.ms-dark, html:has(.ms-dark)) .btn-ghost:hover {
+  border-color: var(--ms-blue-text);
+  color: var(--ms-text);
+}
+/* honestly-disabled controls that must stay focusable to show a tooltip —
+   e.g. the prompt modal's Settings icon ("Model selection coming"). A real
+   `disabled` attribute would swallow the hover/focus the tooltip needs. */
+:is(.ms-dark, html:has(.ms-dark)) .btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* focus — the offset is load-bearing, not decorative: it lands the ring on the
+   surface behind the control (9.06:1 on --ms-bg, 8.26:1 on --ms-surface,
+   7.47:1 on --ms-elev) instead of on a blue pill, where it would read 2.57:1
+   and miss the 3:1 WCAG 1.4.11 wants of a focus indicator. Fields keep offset
+   0 because their own border is the boundary. */
+:is(.ms-dark, html:has(.ms-dark)) :focus-visible {
+  outline: 2px solid var(--ms-focus);
+  outline-offset: 2px;
+}
+:is(.ms-dark, html:has(.ms-dark)) .input:focus-visible { outline-offset: 0; }
+
+/* scrollbars — thumb is --ms-line-strong at 4.08:1 on --ms-bg (WCAG 1.4.11) */
+:is(.ms-dark, html:has(.ms-dark)) ::-webkit-scrollbar { width: 10px; height: 10px; }
+:is(.ms-dark, html:has(.ms-dark)) ::-webkit-scrollbar-track { background: var(--ms-bg); }
+:is(.ms-dark, html:has(.ms-dark)) ::-webkit-scrollbar-thumb {
+  background: var(--ms-line-strong);
+  border: 2px solid var(--ms-bg);
+  border-radius: var(--ms-r-pill);
+  background-clip: padding-box;
+}
+:is(.ms-dark, html:has(.ms-dark)) ::-webkit-scrollbar-thumb:hover { background: var(--ms-text-2); }
+
+/* ── legacy-fill bridges ──
+   Three Phase-1 call sites bind a token that now means "type" to a SOLID
+   FILL: `bg-accent text-white` and `bg-ink text-white` (evidence.tsx badges)
+   and the `bg-ink/20` thread scrim. Left alone they'd render white on near-
+   white and a veil that lightens instead of dims. Corrected here rather than
+   by editing files this task doesn't own — fix at the source, delete this. */
+:is(.ms-dark, html:has(.ms-dark)) .bg-accent.text-white { background-color: var(--ms-blue); }  /* #fff 5.36:1 */
+:is(.ms-dark, html:has(.ms-dark)) .bg-ink { background-color: var(--ms-line-strong); }         /* #fff 4.63:1 */
+:is(.ms-dark, html:has(.ms-dark)) .bg-ink\/20 { background-color: var(--ms-scrim); }

@@ -1,0 +1,30 @@
+{
+  "name": "plotline-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "bash ../plotline-api/run-detached.sh",
+    "dev": "bash ./scripts/dev.sh",
+    "dev:web": "next dev -p 3100",
+    "stack:status": "bash ../plotline-api/run-detached.sh --status",
+    "stack:stop": "bash ../plotline-api/run-detached.sh --stop",
+    "build": "next build",
+    "start": "next start -p 3100",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "dev:restart": "lsof -ti :3100 | xargs -r kill; sleep 1; next dev -p 3100"
+  },
+  "dependencies": {
+    "next": "^15.4.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.0"
+  }
+}
