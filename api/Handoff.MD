@@ -18,6 +18,9 @@ Web changes are coordinated separately: photo/prompt start, only the current que
 
 Final provider-denied native and isolated PostgreSQL suite: 263 passed / 4 skips (ffmpeg is unavailable locally). Full configured testpaths include rag/tests. Seven added regressions cover exact photo/prompt → clarification → ordinary approval → brand revision → four mocked media renders → delivery; unrelated-question zero dispatch; name-only field preservation; bounded owned vision pixels; substring-safe edits; and legacy missing/foreign-reference refusal. Existing auth/RLS/budget/storage tests pass. Evidence: portfolio/_verify/plotline/fullflow-fix-python-canon-final.log. No paid provider call was made by this workstream. Root browser, actual PixelBin/LLM progression, reload and final ZIP evidence remain pending.
 
+## Live intake packaging correction — pending corrected image acceptance
+The first attempted live photo intake failed before provider dispatch: Pillow was constrained but not installed by Docker. Read-only exact-image diagnosis found `PIL` absent; no usage/asset row was created. The direct requirement is now pinned to Pillow12.3.0. Caught stage failures record failed/stage_failed, and current error envelopes expose an explicit Retry question. Local full suite passes265 with four ffmpeg skips; root must verify uploaded-image decoding in the rebuilt Linux image before an explicit retry. The root preserves the failed thread/evidence and alone performs deployment/provider actions.
+
 ## Workflow preserved
 Conversation fragments → brief → options → templates → script (video) → board → canon → keyframes → generate → creative → QC → delivery.
 Rendering actions remain in the conversation; existing detail controls remain available.

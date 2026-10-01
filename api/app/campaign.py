@@ -30,6 +30,7 @@ import threading
 import time
 import traceback
 from typing import Any, Callable, Optional
+from contextvars import ContextVar
 
 from app import ccs as ccs_mod
 from app import config, store
@@ -309,6 +310,7 @@ def recovery_job(thread: dict) -> Optional[tuple]:
     return None
 
 
+_stage_failed: ContextVar[bool] = ContextVar("plotline_stage_failed", default=False)
 _job_slots = threading.BoundedSemaphore(4)
 _owner_jobs: dict[str, int] = {}
 _owner_jobs_lock = threading.Lock()
@@ -362,6 +364,7 @@ def _spawn(thread_id: str, fn: Callable[..., None], *args: Any) -> None:
             # tag every agent run started by this turn with its thread, so the
             # observability view can group nodes by conversation
             token = current_thread.set(thread_id)
+            failure_token = _stage_failed.set(False)
             status = "interrupted"
             try:
                 with execution_scope(actor):
@@ -369,15 +372,16 @@ def _spawn(thread_id: str, fn: Callable[..., None], *args: Any) -> None:
                     if not active_session(actor) or not store.get_thread(thread_id):
                         return
                     fn(*args)
-                    status = "finished"
+                    status = "failed" if _stage_failed.get() else "finished"
             except BaseException:
                 status = "failed"
                 logger.error("background job failed on thread %s", thread_id)
             finally:
                 try:
                     with execution_scope(actor):
-                        store.finish_run(job_id, status)
+                        store.finish_run(job_id, status, "stage_failed" if status == "failed" else None)
                 finally:
+                    _stage_failed.reset(failure_token)
                     current_thread.reset(token)
                     release_slot()
 
@@ -3402,6 +3406,7 @@ def _require(ws: dict[str, Any], stage: str) -> None:
 def _fail(thread_id: str, summary: str, detail: str) -> None:
     """§04: what broke in plain words + ONE Retry action — never a stack trace
     in the card (the trace goes to the server log)."""
+    _stage_failed.set(True)
     from app.execution import fixture_mode
     if not fixture_mode():
         logger.error("campaign stage failed on thread %s", thread_id)
@@ -3409,7 +3414,9 @@ def _fail(thread_id: str, summary: str, detail: str) -> None:
         detail = ""
     if detail:
         logger.error("campaign thread %s: %s\n%s", thread_id, summary, detail)
-    _say(thread_id, "Something broke — honestly.", [_escalation(summary, summary)])
+    _say(thread_id, "Something broke — honestly.", [_escalation(summary, summary)],
+         question="Review the saved work and usage first. Retry this step when you are ready?",
+         note="Retry is explicit and may submit a new paid request; it never starts automatically.")
 
 
 def _media_fail(thread_id: str, exc: MediaError, prompt: Optional[str], slot: Optional[str]) -> None:

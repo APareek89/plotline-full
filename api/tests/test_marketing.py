@@ -4591,3 +4591,21 @@ def test_different_product_canon_preserves_library_and_restart_bindings(monkeypa
     repeated = campaign._render_canon_views(new_tid, [CanonSheet.model_validate({**new_sheet, 'id': canon_id})], new_cid)
     assert repeated[0].id == new_sheet['id'] and len(calls) == before
     assert dict(store.get_conn().execute('SELECT * FROM canon_sheets WHERE id=?', (canon_id,)).fetchone()) == old_row
+
+
+
+def test_failure_exposes_only_current_explicit_retry_question(monkeypatch):
+    cid, tid = _filled('Actionable failure')
+    from app import execution
+    actor = execution.require_execution()
+    monkeypatch.setattr(execution, 'fixture_mode', lambda: False)
+    # Keep fixture persistence here; only exercise production error redaction.
+    with execution.execution_scope(actor):
+        campaign._fail(tid, 'internal provider detail', 'private traceback detail')
+    last = _envelopes(tid)[-1]
+    assert last['question'] and 'Retry this step' in last['question']['text']
+    assert [item['event'] for item in last['question']['options']] == ['retry']
+    assert last['question']['options'][0]['artifact_id'] == last['artifacts'][0]['id']
+    assert 'paid request' in last['question']['note']
+    serialized = json.dumps(last)
+    assert 'internal provider detail' not in serialized and 'private traceback detail' not in serialized

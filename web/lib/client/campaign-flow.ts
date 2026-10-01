@@ -20,8 +20,25 @@ export function campaignNameFromPrompt(text: string, existingNames: string[] = [
 export function latestCampaignQuestion(messages: ThreadMessage[]): { q: AgentQuestion; msgId: string } | null {
   const latest = messages.at(-1);
   if (!latest || latest.role !== "agent") return null;
-  const q = (latest.envelope as AgentMessage).question;
-  return q ? { q, msgId: latest.id } : null;
+  const envelope = latest.envelope as AgentMessage;
+  if (envelope.question) return { q: envelope.question, msgId: latest.id };
+
+  // Historical failure envelopes offered Retry on their escalation card but
+  // omitted the question. Recover only that explicitly offered current retry;
+  // never search older messages or manufacture approval/generation actions.
+  const retries = (envelope.artifacts ?? [])
+    .filter((artifact) => artifact.type === "escalation")
+    .flatMap((artifact) => (artifact.actions ?? [])
+      .filter((action) => action.event === "retry")
+      .map((action) => ({ label: action.label || "Retry", event: action.event, artifact_id: artifact.id, primary: true })));
+  if (!retries.length) return null;
+  return { msgId: latest.id, q: {
+    text: "This step stopped. Retry it?",
+    options: retries,
+    multi: false,
+    free_text: true,
+    note: "Retry only when you are ready. Provider work that already completed may have been charged, and retrying may repeat it.",
+  } };
 }
 
 /** Old cards are history, not fresh approvals. Only the current server ask is live. */

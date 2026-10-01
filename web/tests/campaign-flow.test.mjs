@@ -36,3 +36,30 @@ test('saved cards offer only exact artifact/event pairs in the current server qu
   assert.deepEqual(campaignArtifactForReview(current, null).actions, []);
   assert.equal(current.actions.length, 2, 'filtering a view does not mutate stored history');
 });
+
+
+test('the current legacy escalation exposes only its explicitly offered Retry', () => {
+  const failure = agent('failed', 4, null);
+  failure.envelope.artifacts = [{ id: 'error', type: 'escalation', title: 'Step failed', payload: { reason: 'A dependency was unavailable.' }, actions: [
+    { id: 'retry', label: 'Retry', event: 'retry', style: 'primary' },
+    { id: 'approve', label: 'Approve', event: 'approve_brief', style: 'primary' },
+  ] }];
+  const offered = latestCampaignQuestion([failure]);
+  assert.equal(offered?.msgId, 'failed');
+  assert.deepEqual(offered?.q.options, [{ label: 'Retry', event: 'retry', artifact_id: 'error', primary: true }]);
+  assert.match(offered.q.note, /charged/);
+  assert.equal(latestCampaignQuestion([failure, agent('new-status', 5, null)]), null);
+  assert.equal(latestCampaignQuestion([failure, { id: 'user-retry', seq: 5, role: 'user', envelope: { action: { event: 'retry' } }, created_at: 5 }]), null);
+  const canonical = question([{ label: 'Current action', event: 'approve_brief', artifact_id: 'brief', primary: true }]);
+  failure.envelope.question = canonical;
+  assert.equal(latestCampaignQuestion([failure])?.q, canonical, 'the current server question takes precedence');
+});
+
+test('cards without an explicit escalation retry cannot manufacture a recovery button', () => {
+  const turn = agent('ordinary', 1, null);
+  turn.envelope.artifacts = [{ id: 'brief', type: 'campaign_brief', title: 'Brief', payload: {}, actions: [{ id: 'retry', label: 'Retry', event: 'retry', style: 'primary' }] }];
+  assert.equal(latestCampaignQuestion([turn]), null);
+  turn.envelope.artifacts[0].type = 'escalation';
+  turn.envelope.artifacts[0].actions = [{ id: 'regen', label: 'Regenerate', event: 'regenerate_brief', style: 'primary' }];
+  assert.equal(latestCampaignQuestion([turn]), null);
+});

@@ -703,3 +703,14 @@ The sole launch image reroll succeeded through PixelBin `nanoBanana_generate`, r
 ### Same owner, different product: preserve the existing canon identity
 
 The added product-reference equality check initially prevented inappropriate reuse but still wrote the new render under the old human canon slug. The library UPSERT therefore replaced earlier campaign data. The root review caught this before deployment. A real store regression first reproduced the changed row, then verified that a different product receives a deterministic new canon ID, the current board uses that ID after restart, and both old library metadata and old assets remain unchanged. Same-product reuse remains free. Identity validation must include the persistence key and downstream bindings, not only the render inputs.
+
+
+## 2026-10-01 — A constraints lock does not install a vision dependency
+
+**Observed failure.** The first live photo-intake job stopped in83ms with zero usage rows, zero assets and no agent-run entry. A read-only execution of the owned photo decoder against the exact deployed image reproduced `ModuleNotFoundError: PIL`; the uploaded PNG matched its stored bytes/hash. No corrective provider retry was made during diagnosis.
+
+**Five whys.** (1) New vision intake imports Pillow. (2) The Linux image did not contain that distribution. (3) Docker installs `-r requirements.txt -c requirements-lock.txt`, and Pillow was only in the constraint file. (4) The local environment already had it, so local vision tests passed. (5) **Deepest why: acceptance design** — the Linux smoke generated a mock SVG but did not exercise uploaded-image decoding.
+
+**Repair and prevention.** Declare the existing exact Pillow12.3.0 pin as a direct requirement. The network-none Linux acceptance must decode an actual synthetic PNG through `_upload_images`, resize it and verify the JPEG output. Constraints pin dependency versions; they are not an install manifest. A second exposed contract gap is repaired: caught stage errors now persist job status `failed` with safe `stage_failed`, rather than misleading `finished`, and current failures present an explicit Retry question with a possible-paid-request warning. The web fallback may expose only the latest persisted escalation's offered Retry action. No stale-question resurrection or automatic retry is allowed.
+
+**Local validation.**265 tests pass, including isolated PostgreSQL and actual background-job outcome/reset contracts; four ffmpeg-dependent tests are skipped locally. Corrected Linux image and root-owned live retry remain pending at this checkpoint.

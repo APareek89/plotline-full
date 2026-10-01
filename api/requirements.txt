@@ -15,3 +15,6 @@ pytest>=8.0
 psycopg[binary]==3.2.10
 boto3==1.42.97
 openai==3.22.1
+
+# Photo intake decodes and bounds uploaded product pixels; constraints do not install it.
+pillow==12.3.0
