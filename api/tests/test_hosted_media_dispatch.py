@@ -39,7 +39,8 @@ def test_rejection_logs_only_bounded_protocol_diagnostics(meter,monkeypatch,capl
  assert 'status=400 code=JR-1000,format param=/input/images/0' in caplog.text
  assert all(secret not in caplog.text for secret in ('secret-url','private','secret-code','secret.example'))
 
-def test_pixelbin_reference_wire_matches_published_sdk(meter,monkeypatch):
+@pytest.mark.parametrize('count',[1,2])
+def test_pixelbin_url_reference_json_matches_published_python_sdk(meter,monkeypatch,count):
  import json
  requests=[];original=httpx.Client
  def handler(request):
@@ -49,15 +50,27 @@ def test_pixelbin_reference_wire_matches_published_sdk(meter,monkeypatch):
   return httpx.Response(200,stream=httpx.ByteStream(json.dumps(body).encode()))
  monkeypatch.setattr(httpx,'Client',lambda **kwargs:original(transport=httpx.MockTransport(handler),**kwargs))
  monkeypatch.setitem(config.PIXELBIN_MODELS,'image_final','nanoBanana_generate')
- refs=['https://owned.example/a?signature=fixture','https://owned.example/b?signature=fixture']
+ refs=['https://owned.example/a?versionId=a%2Fb&X-Amz-Signature=fixture',
+       'https://owned.example/b?versionId=c%2Bd&X-Amz-Signature=fixture'][:count]
  with t.attempt('pixelbin','nanoBanana_generate',0):
   pb.generate('image','preserve the referenced product',ratio='1:1',image_urls=refs)
- body=requests[0].content.decode()
+ body=json.loads(requests[0].content)
  assert [r.method for r in requests]==['POST','GET']
- assert body.count('name="input.images"')==2 and all(ref in body for ref in refs)
- assert 'name="input.prompt"' in body and 'name="input.aspect_ratio"' in body
- assert 'input.images[]' not in body and 'output_resolution' not in body
+ assert requests[0].headers['content-type']=='application/json'
+ assert body=={'input.prompt':'preserve the referenced product','input.aspect_ratio':'1:1','input.images':refs}
  assert meter[-1][0]=='settle' and meter[-1][1]['consumed_credits']==1
+
+def test_reference_rejection_never_retries_with_another_encoding(meter,monkeypatch):
+ calls=[]
+ def request(method,url,**kwargs):
+  calls.append((method,kwargs))
+  return reply(400,{'errorCode':'JR-0400','errors':[{'instancePath':'/input/images'}]})
+ monkeypatch.setattr(t,'request',request)
+ with pytest.raises(pb.PixelbinError):
+  with t.attempt('pixelbin','nanoBanana_generate',0):
+   pb.submit_and_wait('nanoBanana_generate',{'prompt':'fixture','images':['https://owned.example/a?signature=fixture']})
+ assert len(calls)==1 and calls[0][0]=='POST' and 'json_body' in calls[0][1] and 'files' not in calls[0][1]
+ assert [name for name,_ in meter]==['reserve','dispatch','settle'] and meter[-1][1]['actual_usd'] is None
 def test_fal_credentials_ignore_returned_urls(meter,monkeypatch):
  calls=[]
  def request(method,url,**kw):

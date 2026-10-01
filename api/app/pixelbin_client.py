@@ -5,7 +5,8 @@ spoken directly. Paths and auth were read off `@pixelbin/admin` rather than
 guessed:
 
     create  POST /service/platform/transformation/v1.0/predictions/{plugin}/{op}
-            multipart/form-data · Authorization: Bearer <token> · → {_id}
+            URL references: dotted-key JSON (official Python SDK); otherwise multipart
+            Authorization: Bearer <token> · → {_id}
     poll    GET  /service/platform/transformation/v1.0/predictions/{requestId}
             → {status: PENDING|SUCCESS|FAILURE, output: [url, ...]}
 
@@ -134,19 +135,45 @@ def _rejection_diagnostic(response: httpx.Response) -> tuple[int, str, str]:
     return response.status_code, ",".join(sorted(set(found_codes)))[:128] or "unavailable", ",".join(sorted(set(found_params)))[:128] or "unavailable"
 
 
+def _record_rejection(response: httpx.Response) -> None:
+    status, code, param = _rejection_diagnostic(response)
+    detail = f"PixelBin rejected submission: status={status} code={code} param={param}"
+    logger.warning("pixelbin_submit_rejected status=%s code=%s param=%s", status, code, param)
+    # CloudWatch survives container replacement; the existing owner-scoped
+    # activity log also keeps these safe categories beside this campaign.
+    try:
+        from app.execution import require_execution
+        from app import store
+        actor = require_execution()
+        if actor.thread_id:
+            store.log_artifact_activity(actor.thread_id, "media", "provider_rejected", detail)
+    except Exception:
+        logger.warning("pixelbin_rejection_audit_unavailable")
+
+
 def submit_and_wait(name: str, payload: dict[str, Any], timeout_s: float = 600) -> list[str]:
     """One submit, fixed authenticated polling, bounded response, no hidden retry."""
     from app import media_transport as transport
     plugin, operation = split_name(name)
     if not re.fullmatch(r"[A-Za-z0-9]+",plugin) or not re.fullmatch(r"[A-Za-z0-9_]+",operation) or config.PIXELBIN_DOMAIN!="https://api.pixelbin.io":
         raise PixelbinError("invalid PixelBin endpoint")
+    # The official Python SDK uses dotted-key JSON for URL-only inputs. Unlike
+    # multipart scalar fields, it preserves a one-image array on the wire.
+    # Plotline supplies only owned signed URLs, never file objects, here.
+    references = payload.get("images") or payload.get("image_urls")
+    if references:
+        if not isinstance(references, list) or not all(isinstance(url, str) and url.startswith("https://") for url in references):
+            raise PixelbinError("PixelBin references must be HTTPS URL arrays")
+        request_body = {"json_body": {f"input.{key}": value for key, value in payload.items() if value is not None}}
+    else:
+        request_body = {"files": [(key, (None, value)) for key, value in _as_form(payload)]}
     headers=_headers();transport.before_submit(payload)
     try:
         sub=transport.request("POST",f"https://api.pixelbin.io{_PREDICT}/{plugin}/{operation}",headers=headers,
-                              files=[(k,(None,v)) for k,v in _as_form(payload)],timeout=60)
+                              **request_body,timeout=60)
         if sub.status_code in (400,401,402,403,404,422,429):
             transport.rejected()
-            logger.warning("pixelbin_submit_rejected status=%s code=%s param=%s", *_rejection_diagnostic(sub))
+            _record_rejection(sub)
             raise PixelbinError("PixelBin rejected the request",policy=transport.is_policy(sub),
                                 safe_to_fallback=sub.status_code in (401,402,403,404,429))
         sub.raise_for_status();job=sub.json();request_id=job.get('_id') or job.get('requestId') or job.get('id')

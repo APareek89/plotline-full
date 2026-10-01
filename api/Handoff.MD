@@ -1,5 +1,5 @@
 # Plotline — launch handoff
-last-synced: `61800c1`
+last-synced: `62553e8`
 
 ## Current state — 2026-10-01
 The portfolio launch brief supersedes the earlier local-only hosting/auth/palette rules.
@@ -87,3 +87,9 @@ The generated neutral style now forbids added logos while preserving markings al
 The real canon plan completed, but the first PixelBin submission was explicitly rejected before a job ID was returned. The old path discarded status and field details, so its exact cause is unknown. A read-only current authenticated schema, published SDK comparison, actual offline multipart capture and owned-reference GET/hash/MIME all pass; no speculative request-format rewrite was made. Rejections now log only bounded status/code/parameter categories, never provider prose or signed URLs. The rejected usage row remains retained with unknown USD.
 
 PLOTLINE_OWNER_MEDIA_LIMIT now defaults to6 and accepts only integers1–20; shared20 remains fixed. Root may temporarily set8 for this QA continuation and must restore the original setting afterward. Real PostgreSQL tests prove6→8→6 preserves every usage row and invalid settings reserve nothing. Full suite290 passed/four local ffmpeg skips. This workstream made no generation request; root alone controls any explicit instrumented retry.
+
+
+## Reference-array transport correction — source frozen, live retry pending
+Retained CloudWatch evidence now identifies the instrumented rejection as HTTP400 / JR-0400 / /input/images. URL references now use the official Python SDK contract: application/json with dotted input keys and actual arrays, including a single URL. The previously proven no-reference multipart path stays unchanged; there is no encoding fallback or retry. An independent execution of the official SDK pipeline and actual HTTPX wire tests agree for signed-style URLs. This addresses the rejected field without claiming the provider has accepted the corrected request yet.
+
+Safe rejection categories are also saved in the existing owner-scoped activity log, so container replacement does not remove the campaign diagnosis. Real PostgreSQL tests verify owner isolation and unchanged unknown-USD settlement. Full suite293 passed/four local ffmpeg skips. Root owns deployment, any temporary allowance and the next explicit live attempt; no provider request was made by this workstream.

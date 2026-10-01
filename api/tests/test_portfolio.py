@@ -159,6 +159,36 @@ def test_invalid_media_limit_rejects_before_reservation(pg_env, monkeypatch):
             assert conn.execute("SELECT count(*) AS n FROM usage WHERE owner_id=%s", (actor.owner_id,)).fetchone()["n"] == 0
 
 
+def test_pixelbin_rejection_survives_in_owner_activity_without_sensitive_body(pg_env, monkeypatch):
+    from dataclasses import replace
+    import httpx
+    from app import config, media_transport, pixelbin_client
+    a, b = pg_env(), pg_env()
+    with execution_scope(a):
+        campaign = store.create_series({"name": "Rejection fixture"})
+        thread = store.create_thread(campaign)["id"]
+    monkeypatch.setattr(config, "PIXELBIN_API_TOKEN", "fixture-only")
+    calls = []
+    def request(method, url, **kwargs):
+        calls.append(method)
+        return httpx.Response(400, json={"errorCode": "JR-0400", "message": "private signed URL or prompt",
+            "details": [{"instancePath": "/input/images"}]}, request=httpx.Request(method, url))
+    monkeypatch.setattr(media_transport, "request", request)
+    with execution_scope(replace(a, campaign_id=campaign, thread_id=thread)):
+        with pytest.raises(pixelbin_client.PixelbinError):
+            with media_transport.attempt("pixelbin", "nanoBanana_generate", 0):
+                pixelbin_client.submit_and_wait("nanoBanana_generate", {"prompt": "private prompt", "images": ["https://owned.example/private"]})
+        activity = store.get_artifact_activity(thread, "media")
+        assert len(activity) == 1 and activity[0]["event"] == "provider_rejected"
+        assert activity[0]["detail"] == "PixelBin rejected submission: status=400 code=JR-0400 param=/input/images"
+        with database.connection(owner_id=a.owner_id) as conn:
+            rows = conn.execute("SELECT status,actual_usd,provider_job_id FROM usage WHERE owner_id=%s", (a.owner_id,)).fetchall()
+        assert rows == [{"status": "usage_unavailable", "actual_usd": None, "provider_job_id": None}]
+    with execution_scope(b):
+        assert store.get_artifact_activity(thread, "media") == []
+    assert calls == ["POST"]
+
+
 def test_canon_names_are_owner_scoped_and_assets_survive_campaign_delete(pg_env, monkeypatch, tmp_path):
     from app import config
     from app.execution import owner_directory
