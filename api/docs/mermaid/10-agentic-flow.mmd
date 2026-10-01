@@ -21,7 +21,7 @@ flowchart TB
   MEDIA["Media adapter [FUNCTION]<br/>in: approved prompt, refs and mode<br/>out: Sample or recorded provider output"]
   CREATIVE["Creative review [FUNCTION]<br/>in: generated artifacts and provenance<br/>out: accept or explicit per-asset reroll"]
   QC["QC gate [FUNCTION]<br/>in: accepted creative and checks<br/>out: cleared or acknowledged defects"]
-  DONE["Deliver [FUNCTION]<br/>in: explicit delivery action<br/>out: owned AdCard and private downloadable bundle"]
+  DONE["Deliver [FUNCTION]<br/>in: cleared QC and explicit delivery action<br/>out: owned AdCard and private downloadable bundle"]
   JOB["Background job admission [FUNCTION]<br/>in: actor and allowlisted operation<br/>out: at most1 job per thread,2 per owner,4 per process"]
   RECOVER["Interrupted-step recovery [FUNCTION]<br/>in: persisted allowlisted job and current owner<br/>out: explicit Retry warning, never automatic replay"]
   NAME --> MODE
@@ -38,7 +38,7 @@ flowchart TB
   KEYFRAME -->|"all approved"| CONFIRM
   KEYFRAME -->|"not all approved"| ASK
   CONFIRM -->|"explicit choice"| JOB --> MEDIA --> CREATIVE
-  CREATIVE -->|"accept"| QC -->|"explicit Deliver"| DONE
+  CREATIVE -->|"accept"| QC -->|"cleared + explicit Deliver"| DONE
   CREATIVE -.->|"explicit visual edit rerolls one slot"| JOB
   CREATIVE -->|"information question: no dispatch"| ASK
   BRIEF -.->|"brand/context feedback preserves history; new review"| MODE

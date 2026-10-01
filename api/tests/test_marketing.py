@@ -2754,8 +2754,38 @@ def test_qc_stands_between_the_creative_and_the_ad_card():
     # unwired detectors are honest about it
     assert report["automated"]["lip_sync"] == "skip"
 
-    _act(tid, "qc", "deliver")
-    assert store.list_ad_cards(cid), "deliver did not assemble the Ad Card"
+    _text(tid, "yes")
+    assert store.list_ad_cards(cid), "ordinary approval did not assemble the cleared Ad Card"
+
+
+@pytest.mark.parametrize("report", [
+    {"verdict": "held", "findings": [{"tier": "blocking", "check": "rights", "detail": "Permission is missing"}]},
+    {"verdict": "cleared", "findings": [{"tier": "blocking", "check": "rights", "detail": "Permission is missing"}]},
+    None,
+])
+def test_qc_delivery_cannot_be_bypassed_by_text_direct_event_or_recovery(monkeypatch, report):
+    cid, tid = _ruminated("QC must clear")
+    _act(tid, "o1", "approve")
+    _act(tid, "detail", "generate_creative")
+    _act(tid, "confirm", "generate_single")
+    _act(tid, "creative", "accept_all")
+    # Persist the latest report so the real event handler rehydrates it.
+    campaign._say(tid, "QC requires review.", [campaign.ArtifactEnvelope(
+        type="qc_report", id="qc", title="QC", payload={"report": report})])
+    campaign._WORKSPACES.pop(tid, None)
+    def no_provider(*args, **kwargs):
+        pytest.fail("A delivery request must not start provider work")
+    monkeypatch.setattr(campaign, "run_agent", no_provider)
+    monkeypatch.setattr(campaign, "generate", no_provider)
+    for request in (lambda: _text(tid, "yes"), lambda: _text(tid, "deliver it"),
+                    lambda: _act(tid, "qc", "deliver"),
+                    lambda: campaign._assemble_turn(tid, cid)):
+        request()
+        assert store.list_ad_cards(cid) == []
+        assert store.get_thread(tid)["stage"] == "qc"
+        last = _envelopes(tid)[-1]
+        assert "QC" in last["text"] and last["question"]
+        assert not last["question"].get("options")
 
 
 def test_the_reference_budget_reaches_the_prompt_from_the_same_constant():
@@ -4493,7 +4523,8 @@ def test_intake_vision_reads_bounded_owned_image_bytes(monkeypatch, tmp_path):
 
 
 def test_natural_gate_commands_are_stage_scoped_and_do_not_hide_change_requests():
-    ws = {'options': {}, 'option_order': [], 'items': [{'slot': 'shot_01_4x5'}]}
+    ws = {'options': {}, 'option_order': [], 'items': [{'slot': 'shot_01_4x5'}],
+          'qc': {'verdict': 'cleared'}}
     for stage, event in [('brief', 'approve_brief'), ('script', 'approve_script'),
                          ('detail', 'approve_board'), ('canon', 'approve_canon'),
                          ('keyframes', 'approve_keyframes'), ('qc', 'deliver')]:

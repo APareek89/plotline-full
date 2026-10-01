@@ -68,6 +68,7 @@ from app.schemas import (
     ModelConfirm,
     Plan,
     PostMedia,
+    QCReport,
     SeriesLevel,
     TemplateRef,
     UserEvent,
@@ -657,7 +658,9 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
             _spawn(thread_id, _keyframes_turn, thread_id, campaign_id)
             return
 
-    if stage == "qc" and event == "deliver":
+    if stage == "qc" and event in ("deliver", "review_qc"):
+        if not _require_qc_clear(thread_id, ws):
+            return
         _spawn(thread_id, _assemble_turn, thread_id, campaign_id)
         return
 
@@ -828,6 +831,8 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
     }
     if stage in gate and (approval or (stage == "qc" and low in ("deliver", "deliver it", "ship it"))):
         event, target = gate[stage]
+        if stage == "qc" and not _qc_cleared(ws):
+            event = "review_qc"
         return {"event": event, "artifact_id": target}
     if stage == "canon" and low in ("skip", "skip canon", "no canon"):
         return {"event": "skip_canon", "artifact_id": "canon"}
@@ -3006,10 +3011,32 @@ def _use_as_reference(thread_id: str, slot: str) -> None:
 # ------------------------------------------------ step 8: Ad Card assembly --
 
 
+def _qc_cleared(ws: dict[str, Any]) -> bool:
+    report = ws.get("qc")
+    if not isinstance(report, dict) or report.get("verdict") != "cleared":
+        return False
+    try:
+        # Re-derive the verdict, rather than trusting a stale/forged label.
+        return QCReport.model_validate(report).verdict == "cleared"
+    except ValidationError:
+        return False
+
+
+def _require_qc_clear(thread_id: str, ws: dict[str, Any]) -> bool:
+    if _qc_cleared(ws):
+        return True
+    store.set_thread_stage(thread_id, "qc")
+    _say(thread_id, "Delivery is held until QC clears the blocking findings.",
+         question="Review the QC findings before requesting delivery again.")
+    return False
+
+
 def _assemble_turn(thread_id: str, campaign_id: str) -> None:
     try:
         _working[thread_id] = "assembling the Ad Card"
         ws = _ws(thread_id)
+        if not _require_qc_clear(thread_id, ws):
+            return
         context = _context_of(campaign_id)
         detail = ws["detail"]
         campaign_block = context.campaign

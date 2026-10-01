@@ -75,11 +75,17 @@ def test_cached_scope_blocks_live_sdk(meter,monkeypatch):
         with pytest.raises(PermissionError):invoke()
     assert meter==[]
 
-def test_function_roundtrip_uses_same_graph_tools(meter,monkeypatch):
+@pytest.mark.parametrize("async_fields", [{}, {"async": False}])
+def test_function_roundtrip_uses_same_graph_tools(meter,monkeypatch,async_fields):
     seen=[]
     def handler(req):
         body=json.loads(req.content);seen.append(body)
-        return httpx.Response(200,json=response(output=[{'type':'function_call','id':'fc_fixture','call_id':'call_fixture','name':'get_profile','arguments':'{}','status':'completed'}]) if len(seen)==1 else response())
+        if len(seen)==2:
+            tool=body['input'][-2]
+            if 'async_' in tool or any(v is None for v in tool.values()):
+                return httpx.Response(400,json={'error':{'type':'invalid_request_error','code':'unknown_parameter','param':'input[1].async_','message':'untrusted provider details must not persist'}})
+            assert tool=={'type':'function_call','id':'fc_fixture','call_id':'call_fixture','name':'get_profile','arguments':'{}','status':'completed',**async_fields}
+        return httpx.Response(200,json=response(output=[{'type':'function_call','id':'fc_fixture','call_id':'call_fixture','name':'get_profile','arguments':'{}','status':'completed',**async_fields}]) if len(seen)==1 else response())
     wire(monkeypatch,handler)
     dispatcher=SimpleNamespace(dispatch=lambda name,args:'{"niche":"fixture"}')
     assert p.openai_call('gpt-5.4-mini','JSON',[{'role':'user','content':'test'}],dispatcher,True,False,[])=='{"ok":true}'
@@ -143,3 +149,30 @@ def test_slow_trickle_transport_hits_wall_deadline_once_and_keeps_uncertain(mete
     monkeypatch.setattr(httpx,'HTTPTransport',lambda **kwargs:httpx.MockTransport(handle))
     with pytest.raises(p.ProviderFailure,match='unknown'):invoke()
     assert len(seen)==1 and [x[0] for x in meter]==['reserve','dispatch','uncertain']
+
+
+def test_http_rejection_persists_only_safe_protocol_metadata(meter,monkeypatch):
+    from pydantic import BaseModel
+    from app.agents import runner
+    class Result(BaseModel):
+        ok: bool
+    seen=[]
+    def handler(req):
+        seen.append(req)
+        return httpx.Response(400,json={'error':{
+            'message':'SECRET_SENTINEL https://private.invalid/?token=SECRET_SENTINEL',
+            'code':'unknown_parameter','param':'input[1].async_',
+            'type':'invalid_request_error'}})
+    wire(monkeypatch,handler)
+    with pytest.raises(runner.AgentTransport,match=r'status=400 code=unknown_parameter param=input\[1\].async_'):
+        runner.run_agent(agent='diagnostic_fixture',prompt_name='campaign_intake',
+                         model='gpt-5.4-mini',user_payload={'fixture':True},schema=Result)
+    rows=[json.loads(line) for line in (config.LOG_DIR/'agent_runs.jsonl').read_text().splitlines()]
+    saved=next(row for row in rows if row['agent']=='diagnostic_fixture')
+    assert saved['attempts']==1 and len(seen)==1
+    assert saved['validation_errors']==['provider_request_rejected status=400 code=unknown_parameter param=input[1].async_']
+    assert 'SECRET_SENTINEL' not in json.dumps(saved)
+    assert meter[-1]==('settle',{'actual_usd':Decimal(0)})
+    reason=p._rejection_reason(400,SimpleNamespace(body={'error':{
+        'code':'SECRET_SENTINEL','param':'input[0].SECRET_SENTINEL','message':'SECRET_SENTINEL'}}))
+    assert reason=='provider_request_rejected status=400'

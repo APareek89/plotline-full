@@ -357,3 +357,53 @@ def test_mocked_planning_flow_accepts_cited_retrieved_evidence():
     resolve_or_fail(_evidence("chunk:C0777"), routing, errors, "concept c01",
                     retrieved_ids=run_retrieved)
     assert errors and "NOT returned" in errors[0]
+
+
+@pytest.mark.parametrize("mode,mock,allowed", [("live", False, False), ("live", True, True), ("cached", False, True)])
+def test_actual_devrag_samples_are_not_live_evidence(monkeypatch, mode, mock, allowed):
+    import json
+    from devrag import server
+    from app import campaign
+    from app.execution import Execution, execution_scope
+    from app.schemas import CreatorContext
+    monkeypatch.setattr(config, "MOCK_LLM", mock)
+    monkeypatch.setattr(config, "MOCK_MEDIA", mock)
+    monkeypatch.setattr(config, "ALLOW_SEED_EVIDENCE", False)
+    # This suite intentionally retains fixture_mode=1: it must not bypass live filtering.
+    seen=[]
+    def handler(req):
+        seen.append(req.url.path)
+        payload=json.loads(req.content) if req.content else {}
+        if req.url.path=="/health":data=server.health()
+        elif req.url.path=="/search_corpus":data=server.search_corpus(server.SearchRequest(**payload))
+        else:data=server.resolve_source_ids(server.ResolveRequest(**payload))
+        return httpx.Response(200,json=data)
+    client=_client(handler)
+    routing=RoutingRag(primary=client,aux=client,enabled=True)
+    monkeypatch.setattr(campaign, "rag", routing)
+    actor=Execution("00000000-0000-4000-8000-000000000011","00000000-0000-4000-8000-000000000012",mode=mode)
+    with execution_scope(actor):
+        samples=server.search_corpus(server.SearchRequest(query="", k=50))["results"]
+        assert samples and all(row["sample_data"] for row in samples)
+        for kind in ("chunk", "asset", "stat", "trend"):
+            rows=routing.search_corpus("", k=50, filters={"kind": kind})
+            assert bool(rows) is allowed
+        ids=[row["source_id"] for row in samples]
+        resolved=routing.resolve_source_ids(ids)
+        assert all(value is allowed for value in resolved.values())
+        if not allowed:
+            errors=[]
+            evidence=Evidence(tag="REF",source_id=ids[0],claim="Fixture claim")
+            resolve_or_fail([evidence],routing,errors,"live",retrieved_ids=set(ids))
+            assert errors and "unresolvable" in errors[0]
+            assert campaign._niche_asset_count(CreatorContext(name="Fixture",mode="one_time",content_area="fashion",objective="impressions",cadence={"type":"one_time","concept_count":1},content_type="text_image"))==0
+
+
+def test_live_filters_individually_marked_samples_but_keeps_real_hits(monkeypatch):
+    from app.execution import Execution, execution_scope
+    monkeypatch.setattr(config,"MOCK_LLM",False)
+    client=_client(lambda req:httpx.Response(200,json={"results":[
+        {"source_id":"chunk:sample","tier":"official","sample_data":True},
+        {"source_id":"chunk:real","tier":"official"}]}))
+    with execution_scope(Execution("00000000-0000-4000-8000-000000000011","00000000-0000-4000-8000-000000000012")):
+        assert [row["source_id"] for row in client.search_corpus("q")]==["chunk:real"]

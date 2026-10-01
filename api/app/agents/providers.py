@@ -4,6 +4,7 @@ import hashlib
 import base64
 import binascii
 import json
+import re
 import time
 from decimal import Decimal
 from typing import Any
@@ -98,12 +99,40 @@ def _reserve(provider,model,body,searches):
     usage.dispatch(res,request_sha256=hashlib.sha256(raw).hexdigest())
     return res
 
+# Only protocol identifiers enter the owner-scoped agent log. Never include a
+# provider message, request body, header, credential, URL or arbitrary string.
+_REJECTION_CODES = frozenset({
+    'unknown_parameter','invalid_parameter','invalid_value','invalid_type',
+    'missing_required_parameter','invalid_api_key','insufficient_quota',
+    'rate_limit_exceeded','context_length_exceeded','model_not_found',
+    'unsupported_parameter','unsupported_value','invalid_request_error',
+})
+_REJECTION_PARAM = re.compile(
+    r'(?:input|messages|tools|model|instructions|max_output_tokens|max_tokens|'
+    r'reasoning|store|parallel_tool_calls|max_tool_calls|stream|system)'
+    r'(?:\[[0-9]{1,4}\]|\.(?:type|content|text|name|arguments|call_id|id|'
+    r'async_|async|caller|namespace|status|role|parameters|strict|effort|'
+    r'image_url|detail|output|search_context_size))*')
+
+
+def _rejection_reason(status,exc):
+    body=getattr(exc,'body',None)
+    error=body.get('error',body) if isinstance(body,dict) else {}
+    if not isinstance(error,dict):error={}
+    reason=f'provider_request_rejected status={status}'
+    code=error.get('code')
+    if isinstance(code,str) and code in _REJECTION_CODES:reason+=f' code={code}'
+    param=error.get('param')
+    if isinstance(param,str) and len(param)<=96 and _REJECTION_PARAM.fullmatch(param):reason+=f' param={param}'
+    return reason
+
+
 def _fail(res,exc):
     from app import usage
     status=getattr(exc,'status_code',None)
     if type(status) is int and status in (400,401,403,404,413,422,429):
         usage.settle(res,actual_usd=Decimal(0))
-        raise ProviderFailure('provider_request_rejected') from None
+        raise ProviderFailure(_rejection_reason(status,exc)) from None
     usage.uncertain(res,reason='transport_unknown')
     raise ProviderFailure('provider_response_unknown_may_be_charged') from None
 
@@ -192,7 +221,7 @@ def openai_call(model,system,messages,dispatcher,use_tools,web_search,searched):
             functions=[x for x in response.output if x.type=='function_call']
             if functions:
                 if len(functions)>8:raise ProviderFailure('tool_call_limit')
-                convo.extend(x.model_dump(mode='json') for x in response.output)
+                convo.extend(x.model_dump(mode='json',by_alias=True,exclude_none=True) for x in response.output)
                 for call in functions:
                     args=json.loads(call.arguments)
                     result=_tool_result(dispatcher,call.name,args)

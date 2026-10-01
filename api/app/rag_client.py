@@ -56,6 +56,17 @@ class RagBadRequest(RuntimeError):
     """HTTP 4xx — the request itself is wrong; retrying verbatim is banned."""
 
 
+def _allow_sample_evidence() -> bool:
+    # A fixture identity alone never authorizes sample citations for live work.
+    if config.MOCK_LLM:
+        return True
+    from app.execution import is_cached
+    try:
+        return is_cached()
+    except PermissionError:
+        return False
+
+
 class RagClient:
     """Typed client for ONE service speaking the frozen contract."""
 
@@ -132,6 +143,10 @@ class RagClient:
             payload["rerank"] = False  # v1: reranker unsupported, True is an HTTP 400
         data = self._request("POST", "/search_corpus", payload)
         results = data.get("results", [])
+        if not _allow_sample_evidence():
+            if data.get("sample_data") is True:
+                return []
+            results = [r for r in results if r.get("sample_data") is not True]
         if not config.ALLOW_SEED_EVIDENCE:
             dropped = [r for r in results if r.get("tier") == "seed"]
             if dropped:
@@ -151,6 +166,9 @@ class RagClient:
         for start in range(0, len(ids), _RESOLVE_BATCH_MAX):
             batch = ids[start : start + _RESOLVE_BATCH_MAX]
             data = self._request("POST", "/resolve_source_ids", {"source_ids": batch})
+            if data.get("sample_data") is True and not _allow_sample_evidence():
+                out.update({i: False for i in batch})
+                continue
             resolved = data.get("resolved", [])
             if isinstance(resolved, dict):
                 out.update({str(k): bool(v) for k, v in resolved.items()})

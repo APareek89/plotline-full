@@ -121,4 +121,4 @@ def resolve_source_ids(req: ResolveRequest) -> dict[str, Any]:
             resolved[source_id] = False  # unpublishable benchmark = dead citation
         else:
             resolved[source_id] = True
-    return {"resolved": resolved}
+    return {"resolved": resolved, "sample_data": True}
