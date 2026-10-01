@@ -1,9 +1,10 @@
 # Plotline — current handoff
-last-synced: `5337379`
+last-synced: `23271b8`
 
 ## State — 2026-10-01
 Live URL: https://plotline.3-6-183-210.sslip.io; ordinary authenticated live mode.
-Current deployed API source is5337379; targeted environment repair below is locally accepted and awaiting root deployment.
+Current deployed API source is23271b8; the real campaign reached DONE after API restart and natural approval, producing card ad_da8b0ea150.
+The web preview correction below is locally accepted; root web deployment and final runtime audit remain pending.
 The user's full paid-flow QA/deployment authorization supersedes historical local-only/single-call gates; root alone operates live providers, AWS, browser and publication.
 Do not read old environment files, modify other apps, replay providers automatically or commit without root review.
 
@@ -16,24 +17,26 @@ Owner-scoped canon identities prevent cross-product library overwrite; current-o
 PixelBin reference inputs use official dotted-key JSON arrays; no-reference multipart remains; no encoding fallback or hidden retry.
 Detailed causes and earlier checkpoints are in Learning.MD and git history.
 
-## Current environment repair — local acceptance
+## Environment repair — deployed, workflow exercised
 Live canon generated two sheets/four images, but its environment contained an unrequested branded bottle; the exact visual cause is unknown.
 The old environment anchor used generic subject wording without owned-photo context; the inspected schema default depicts a woman, not the bottle.
-Environment anchors now use owned-photo context while excluding that product, retaining requested scene features and prohibiting unrequested objects/branding.
-Explicitly empty backgrounds receive strict empty-scene instructions; custom requested furnishings remain allowed.
-At canon, “remove the bottle from the background; make it empty” renders only one replacement anchor/sheet, without LLM replanning.
-Old rows/assets/product sheet remain unchanged; a fresh environment ID replaces only current board env_refs after both outputs and its review artifact are saved.
-Reload and subsequent keyframes use that new binding; failed correction leaves the previous binding intact.
-Informational questions dispatch nothing and re-present CURRENT canon actions; no old-stage controls are resurrected.
-Composed view metadata is not visual/panel-geometry verification; root must inspect images.
+Anchors now use owned-photo context while excluding the product, preserving requested scene features; explicit empty backgrounds get strict empty-scene instructions.
+A direct canon background correction renders one replacement anchor/sheet without replanning, retains old rows/assets/product identity, and rebinds only after success.
+Reload/keyframes use the new binding; failures preserve the previous one. Free questions retain CURRENT review actions without reviving earlier gates.
+Composed view metadata and cleared QC do not establish visual fidelity; the latest creative edit removed trousers/neck tag but retained shoes/bracelet.
+
+## Full-image review previews — local acceptance
+The1024×1024 keyframe was cropped by a9:16 object-cover preview, hiding edge objects during review.
+Five image surfaces now use object-contain: keyframes, campaign creative/AdCard and legacy asset/post cards; video/grid sizing is unchanged.
+15 client tests, typecheck, isolated .next-preview-fit production build and compiled root-entry HTTP regression pass; no provider calls were made for this UI fix.
 
 ## Evidence and pending gates
 Network-denied full native + isolated nonowner PostgreSQL suite:299 passed, four local ffmpeg skips; six new environment/review contracts included.
 Latest evidence: portfolio/_verify/plotline/environment-correction-final-tests.log; previous provider wire and actual-PG metering checks remain retained.
 Historical launch proved one real image reroll only; its mocked preparation did not prove this full real workflow.
-Current full-flow QA has real text progression and four successful PixelBin canon renders after two retained rejected attempts; final acceptance is still pending.
-Root next: deploy this frozen repair, explicitly correct environment, inspect both sheets, then keyframe → creative edit → QC → delivery, reload and ZIP audit.
-Root may temporarily permit10 owner media attempts for this bounded run, preserving all rows, then restore6; shared limit20 stays fixed.
+Current full-flow QA reached delivery with8 successful PixelBin operations and2 retained rejections; QC is cleared, with the visual limitations above retained explicitly.
+Authenticated ZIP verification passed27 HTTP checks: final PNG896×1152/1,605,678bytes, exact media/metadata hashes, attachment headers and foreign404 including logs; receipt: portfolio/_workstreams/plotline-flow-20261001/delivery-verification.json.
+The in-app browser download-event wait timed out; actual authenticated HTTP download is verified. Root next: confirm owner limit restored to6, deploy the preview fix and finish runtime audit; shared20 and all usage rows remain.
 
 ## Runtime boundaries
 Auth.js credentials, revocable PG sessions/CSRF, signed Next BFF and private FastAPI revalidation;19 forced-RLS tables with DML-only runtime role.

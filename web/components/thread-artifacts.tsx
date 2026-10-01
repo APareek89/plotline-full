@@ -286,7 +286,7 @@ export function ArtifactCard({
               )}
               {it.kind === "image" && it.preview_url && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={media(it.preview_url)} alt={it.slot} className="mt-1 max-h-52 w-full rounded-[8px] object-cover" />
+                <img src={media(it.preview_url)} alt={it.slot} className="mt-1 max-h-52 w-full rounded-[8px] object-contain" />
               )}
               {it.kind === "audio" && it.preview_url && (
                 <audio controls preload="none" src={media(it.preview_url)} className="mt-1 h-8 w-full" />
@@ -314,7 +314,7 @@ export function ArtifactCard({
               {m.kind === "video" && <video controls muted preload="metadata" src={media(m.url)} className="max-h-40 w-full rounded-[8px] bg-ink" />}
               {m.kind === "image" && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={media(m.url)} alt="" className="max-h-40 w-full rounded-[8px] object-cover" />
+                <img src={media(m.url)} alt="" className="max-h-40 w-full rounded-[8px] object-contain" />
               )}
               {m.kind === "audio" && <audio controls preload="none" src={media(m.url)} className="h-8 w-full" />}
               <p className="mono mt-0.5 text-[9.5px] text-muted">{m.params?.prompt_id} · {mediaCost(m.params?.cost, p, m.params)}</p>

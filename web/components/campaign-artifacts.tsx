@@ -903,7 +903,7 @@ function CreativeItemTile({
       )}
       {url && item.kind === "image" && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={item.slot} className="mt-1 max-h-52 w-full rounded-[8px] object-cover" />
+        <img src={url} alt={item.slot} className="mt-1 max-h-52 w-full rounded-[8px] object-contain" />
       )}
       {url && item.kind === "audio" && (
         <audio controls preload="none" src={url} className="mt-1 h-8 w-full" />
@@ -1081,7 +1081,7 @@ function AdCardCard({
               )}
               {m.kind === "image" && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={media(m.url)} alt="" className="max-h-40 w-full rounded-[8px] object-cover" />
+                <img src={media(m.url)} alt="" className="max-h-40 w-full rounded-[8px] object-contain" />
               )}
               {m.kind === "audio" && (
                 <audio controls preload="none" src={media(m.url)} className="h-8 w-full" />
@@ -1510,7 +1510,7 @@ function KeyframeBoardCard({ artifact, onAction, busy }: CampaignArtifactProps) 
               <img
                 src={media(`/api/assets/${f.asset_id}/file`)}
                 alt={f.shot_slot}
-                className="aspect-[9/16] w-full object-cover"
+                className="aspect-[9/16] w-full object-contain"
               />
             ) : (
               <div className={`flex aspect-[9/16] items-center justify-center text-[11px] ${MUTED}`}>
