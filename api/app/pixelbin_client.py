@@ -102,6 +102,38 @@ def _as_form(payload: dict[str, Any]) -> list[tuple[str, str]]:
     return fields
 
 
+def _rejection_diagnostic(response: httpx.Response) -> tuple[int, str, str]:
+    """Retain protocol categories, never provider prose or reference URLs."""
+    codes = {"required", "type", "format", "oneOf", "maxItems", "minItems",
+             "VALIDATION_ERROR", "INVALID_INPUT", "BAD_REQUEST", "UNAUTHORIZED",
+             "FORBIDDEN", "INSUFFICIENT_CREDITS", "RATE_LIMIT_EXCEEDED",
+             "CONTENT_POLICY_VIOLATION"}
+    found_codes, found_params = [], []
+
+    def walk(value: Any, depth: int = 0) -> None:
+        if depth > 4:
+            return
+        if isinstance(value, dict):
+            for key, item in list(value.items())[:20]:
+                if key in ("code", "errorCode", "keyword") and isinstance(item, str):
+                    if item in codes or re.fullmatch(r"[A-Z]{2}-[0-9]{4}", item):
+                        found_codes.append(item)
+                elif key in ("param", "instancePath", "dataPath", "missingProperty") and isinstance(item, str):
+                    if re.fullmatch(r"(?:input[./]|/input/)?(?:images|prompt|aspect_ratio|output_resolution)(?:/[0-9]{1,2}|\[[0-9]{1,2}\])?", item):
+                        found_params.append(item)
+                elif isinstance(item, (dict, list)):
+                    walk(item, depth + 1)
+        elif isinstance(value, list):
+            for item in value[:20]:
+                walk(item, depth + 1)
+
+    try:
+        walk(response.json())
+    except (ValueError, TypeError):
+        pass
+    return response.status_code, ",".join(sorted(set(found_codes)))[:128] or "unavailable", ",".join(sorted(set(found_params)))[:128] or "unavailable"
+
+
 def submit_and_wait(name: str, payload: dict[str, Any], timeout_s: float = 600) -> list[str]:
     """One submit, fixed authenticated polling, bounded response, no hidden retry."""
     from app import media_transport as transport
@@ -114,6 +146,7 @@ def submit_and_wait(name: str, payload: dict[str, Any], timeout_s: float = 600) 
                               files=[(k,(None,v)) for k,v in _as_form(payload)],timeout=60)
         if sub.status_code in (400,401,402,403,404,422,429):
             transport.rejected()
+            logger.warning("pixelbin_submit_rejected status=%s code=%s param=%s", *_rejection_diagnostic(sub))
             raise PixelbinError("PixelBin rejected the request",policy=transport.is_policy(sub),
                                 safe_to_fallback=sub.status_code in (401,402,403,404,429))
         sub.raise_for_status();job=sub.json();request_id=job.get('_id') or job.get('requestId') or job.get('id')

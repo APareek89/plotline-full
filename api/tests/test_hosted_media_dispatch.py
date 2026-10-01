@@ -24,6 +24,40 @@ def test_terminal_policy_no_fallback(meter,monkeypatch):
  with pytest.raises(pb.PixelbinError) as failure:
   with t.attempt('pixelbin','nanoBanana2_generate',.08):pb.submit_and_wait('nanoBanana2_generate',{'prompt':'fixture'})
  assert failure.value.policy and not failure.value.safe_to_fallback and meter[-1][1]['actual_usd'] is None
+
+def test_rejection_logs_only_bounded_protocol_diagnostics(meter,monkeypatch,caplog):
+ calls=[]
+ def request(method,url,**kwargs):
+  calls.append(method)
+  return reply(400,{'errorCode':'JR-1000','message':'secret-url?X-Amz-Signature=private',
+   'errors':[{'keyword':'format','instancePath':'/input/images/0','message':'private-value'},
+             {'code':'secret-code','param':'https://secret.example/private'}]})
+ monkeypatch.setattr(t,'request',request)
+ with caplog.at_level('WARNING'),pytest.raises(pb.PixelbinError):
+  with t.attempt('pixelbin','nanoBanana_generate',0):pb.submit_and_wait('nanoBanana_generate',{'prompt':'private-prompt'})
+ assert calls==['POST'] and meter[-1][0]=='settle' and meter[-1][1]['actual_usd'] is None
+ assert 'status=400 code=JR-1000,format param=/input/images/0' in caplog.text
+ assert all(secret not in caplog.text for secret in ('secret-url','private','secret-code','secret.example'))
+
+def test_pixelbin_reference_wire_matches_published_sdk(meter,monkeypatch):
+ import json
+ requests=[];original=httpx.Client
+ def handler(request):
+  requests.append(request)
+  body=({'_id':'fixture_job'} if request.method=='POST' else
+        {'status':'SUCCESS','output':['https://cdn.example/output.png'],'consumedCredits':1})
+  return httpx.Response(200,stream=httpx.ByteStream(json.dumps(body).encode()))
+ monkeypatch.setattr(httpx,'Client',lambda **kwargs:original(transport=httpx.MockTransport(handler),**kwargs))
+ monkeypatch.setitem(config.PIXELBIN_MODELS,'image_final','nanoBanana_generate')
+ refs=['https://owned.example/a?signature=fixture','https://owned.example/b?signature=fixture']
+ with t.attempt('pixelbin','nanoBanana_generate',0):
+  pb.generate('image','preserve the referenced product',ratio='1:1',image_urls=refs)
+ body=requests[0].content.decode()
+ assert [r.method for r in requests]==['POST','GET']
+ assert body.count('name="input.images"')==2 and all(ref in body for ref in refs)
+ assert 'name="input.prompt"' in body and 'name="input.aspect_ratio"' in body
+ assert 'input.images[]' not in body and 'output_resolution' not in body
+ assert meter[-1][0]=='settle' and meter[-1][1]['consumed_credits']==1
 def test_fal_credentials_ignore_returned_urls(meter,monkeypatch):
  calls=[]
  def request(method,url,**kw):

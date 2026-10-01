@@ -117,7 +117,8 @@ def test_usage_preserves_settlement_and_foreign_owner_cannot_change_it(pg_env):
         row = conn.execute("SELECT status,actual_usd,input_tokens FROM usage WHERE id=%s AND owner_id=%s", (r.id, a.owner_id)).fetchone()
         assert row == {"status": "complete", "actual_usd": Decimal("0.001"), "input_tokens": 20}
 
-def test_media_operation_limit_is_separate_from_unknown_usd(pg_env):
+def test_media_operation_limit_is_separate_from_unknown_usd(pg_env, monkeypatch):
+    monkeypatch.delenv("PLOTLINE_OWNER_MEDIA_LIMIT", raising=False)
     actor = pg_env()
     with execution_scope(actor):
         for index in range(6):
@@ -129,6 +130,33 @@ def test_media_operation_limit_is_separate_from_unknown_usd(pg_env):
         with database.connection(owner_id=actor.owner_id) as conn:
             rows = conn.execute("SELECT actual_usd,consumed_credits FROM usage WHERE owner_id=%s", (actor.owner_id,)).fetchall()
         assert len(rows) == 6 and all(row["actual_usd"] is None and row["consumed_credits"] == 3 for row in rows)
+        monkeypatch.setenv("PLOTLINE_OWNER_MEDIA_LIMIT", "8")
+        for index in range(6, 8):
+            r = usage.reserve(kind="media", provider="fixture", model="fixture", maximum_usd=0)
+            usage.dispatch(r, request_sha256=f"{index:064x}")
+            usage.settle(r, actual_usd=None, consumed_credits=None)
+        with pytest.raises(ValueError, match="media generation allowance"):
+            usage.reserve(kind="media", provider="fixture", model="fixture", maximum_usd=0)
+        monkeypatch.delenv("PLOTLINE_OWNER_MEDIA_LIMIT")
+        with pytest.raises(ValueError, match="media generation allowance"):
+            usage.reserve(kind="media", provider="fixture", model="fixture", maximum_usd=0)
+        with database.connection(owner_id=actor.owner_id) as conn:
+            preserved = conn.execute("SELECT actual_usd,consumed_credits FROM usage WHERE owner_id=%s ORDER BY created_at", (actor.owner_id,)).fetchall()
+        assert len(preserved) == 8 and preserved[:6] == rows
+
+
+def test_invalid_media_limit_rejects_before_reservation(pg_env, monkeypatch):
+    actor = pg_env()
+    with execution_scope(actor):
+        with database.connection(owner_id=actor.owner_id) as conn:
+            before = conn.execute("SELECT * FROM shared_budget WHERE id=1").fetchone()
+        for value in ("", "0", "-1", "21", "100000", "8.0", " 8", "08", "NaN"):
+            monkeypatch.setenv("PLOTLINE_OWNER_MEDIA_LIMIT", value)
+            with pytest.raises(ValueError, match="Invalid media generation allowance"):
+                usage.reserve(kind="media", provider="fixture", model="fixture", maximum_usd=0)
+        with database.connection(owner_id=actor.owner_id) as conn:
+            assert conn.execute("SELECT * FROM shared_budget WHERE id=1").fetchone() == before
+            assert conn.execute("SELECT count(*) AS n FROM usage WHERE owner_id=%s", (actor.owner_id,)).fetchone()["n"] == 0
 
 
 def test_canon_names_are_owner_scoped_and_assets_survive_campaign_delete(pg_env, monkeypatch, tmp_path):

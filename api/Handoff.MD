@@ -81,3 +81,9 @@ Full provider-denied suite:267 passed, four local ffmpeg skips, including the ac
 
 ## Product-mark prompt correction — local acceptance
 The generated neutral style now forbids added logos while preserving markings already on the referenced product. Before keyframe or generated creative rendering, only the exact known legacy neutral style plus its exact generated prefix is normalized; custom styles, user-authored prompts and missing provenance remain unchanged. Effective keyframe prompts are retained in asset metadata and generation logs; historical board text is not rewritten. Five outgoing-prompt regressions cover new, legacy and untouched custom cases. Full network-denied native/isolated-PG suite287 passed, four local ffmpeg skips. Root-owned live media acceptance remains pending; this change makes no provider call.
+
+
+## First canon media rejection — diagnostic boundary
+The real canon plan completed, but the first PixelBin submission was explicitly rejected before a job ID was returned. The old path discarded status and field details, so its exact cause is unknown. A read-only current authenticated schema, published SDK comparison, actual offline multipart capture and owned-reference GET/hash/MIME all pass; no speculative request-format rewrite was made. Rejections now log only bounded status/code/parameter categories, never provider prose or signed URLs. The rejected usage row remains retained with unknown USD.
+
+PLOTLINE_OWNER_MEDIA_LIMIT now defaults to6 and accepts only integers1–20; shared20 remains fixed. Root may temporarily set8 for this QA continuation and must restore the original setting afterward. Real PostgreSQL tests prove6→8→6 preserves every usage row and invalid settings reserve nothing. Full suite290 passed/four local ffmpeg skips. This workstream made no generation request; root alone controls any explicit instrumented retry.

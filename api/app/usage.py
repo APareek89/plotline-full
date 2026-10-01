@@ -24,11 +24,18 @@ def money(value) -> Decimal:
         raise ValueError("Invalid provider cost")
     return amount
 
+def owner_media_limit() -> int:
+    value = os.getenv("PLOTLINE_OWNER_MEDIA_LIMIT", "6")
+    if not re.fullmatch(r"(?:[1-9]|1[0-9]|20)", value):
+        raise ValueError("Invalid media generation allowance")
+    return int(value)
+
 def reserve(*, kind: str, provider: str, model: str, maximum_usd, metadata: dict | None = None) -> Reservation:
     actor = require_live_tools()
     maximum = money(maximum_usd)
     if kind == "media" and maximum != 0:
         raise ValueError("Media uses operation limits; unknown USD conversion cannot be reserved as a quoted price")
+    media_cap = owner_media_limit() if kind == "media" else 6
     if not all(isinstance(v, str) and 0 < len(v) <= 120 for v in (kind, provider, model)):
         raise ValueError("Invalid provider metadata")
     # Caller metadata must never include prompt, key, URL, transcript or body.
@@ -62,7 +69,7 @@ def reserve(*, kind: str, provider: str, model: str, maximum_usd, metadata: dict
             FROM usage WHERE owner_id=%s AND status!='released'""", (actor.owner_id,)).fetchone()
         if kind != "media" and (usage["spent"] + maximum > owner_cap or budget["committed_usd"] + maximum > shared_cap):
             raise ValueError("The application spend limit has been reached")
-        if kind == "media" and (usage["media_calls"] >= 6 or budget["media_calls"] >= 20):
+        if kind == "media" and (usage["media_calls"] >= media_cap or budget["media_calls"] >= 20):
             raise ValueError("The media generation allowance has been reached")
         if usage["calls"] >= 100 or usage["active"] >= 3 or budget["active"] >= 4:
             raise ValueError("Provider request capacity is busy")

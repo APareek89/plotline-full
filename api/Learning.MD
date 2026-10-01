@@ -748,3 +748,7 @@ A successful validated board now gets an owner-bound input-fingerprinted checkpo
 
 ## 2026-10-01 — Preserve existing product marks in generated defaults
 The neutral style said to avoid any logo, contradicting the canon reference requirement to retain the photographed product's existing chest mark. The default now distinguishes added branding from existing markings. The fix is deliberately exact: only the old server neutral style and its known generated prefix are replaced before rendering, leaving custom text and historical board records intact. Actual outgoing-keyframe tests also compare the persisted effective prompt, so the visible generation record describes the request sent. Full suite287 passes with four local ffmpeg skips; real product fidelity still requires the root-owned paid image review.
+
+
+## 2026-10-01 — Retain safe rejection categories before a paid retry
+The first reference-conditioned PixelBin request returned a terminal HTTP rejection, but only generic wording survived. The prior successful text-only render and mocks could not diagnose a reference request. Current schema/SDK checks and the exact owned-reference read confirm the inspected contracts; they do not prove the original rejected parameter. Log bounded protocol status/code/field categories at the rejection boundary, excluding provider prose and reference URLs. Preserve the uncertain USD receipt and require explicit retry. A bounded configurable owner count supports reviewed QA without deleting historical rejected attempts; restoring the default cannot erase earlier usage.
