@@ -3467,16 +3467,8 @@ def test_a_person_typing_in_fragments_reaches_a_startable_campaign(monkeypatch):
     ), "the conversation escalated on input that was actually sufficient"
 
 
-def test_intake_stops_asking_after_two_questions_and_decides(monkeypatch):
-    """Owner decision 2026-08-26: the flow must not stall. The agent asks a
-    couple of questions, then makes assumptions and moves — because the brief
-    is a real approval gate, and correcting a stated assumption there is one
-    click where a fourth question is another turn of work.
-
-    The assumptions must be VISIBLE. An agent that assumes is doing its job;
-    one that assumes silently is not, and the user can only correct what they
-    can see.
-    """
+def test_intake_defaults_require_explicit_delegation_not_message_count(monkeypatch):
+    """The current user contract supersedes the old automatic two-question rule."""
     calls = {"n": 0}
 
     def scripted(*, agent, user_payload, **kw):
@@ -3496,21 +3488,23 @@ def test_intake_stops_asking_after_two_questions_and_decides(monkeypatch):
 
     started = campaign.start_campaign("Never stalls")
     cid, tid = started["campaign_id"], started["thread"]["id"]
-
-    # three vague turns that fill nothing on their own
-    for _ in range(3):
+    _seed_block(cid, "product", PRODUCT)
+    # Unanswered questions never grant permission to select a business goal.
+    for _ in range(4):
         _text(tid, "not sure yet")
-
-    context = CampaignContext.model_validate(store.get_series(cid)["context"])
-    assert campaign.missing_blocks(context) == [], (
-        "the agent was still asking instead of deciding — the flow stalled")
+    context = campaign._context_of(cid)
+    assert context.campaign is None and not context.assumptions
+    assert calls['n'] == 4
+    assert _envelopes(tid)[-1]['question']
+    _text(tid, "you decide")
+    context = campaign._context_of(cid)
+    assert campaign.missing_blocks(context) == []
     assert context.assumptions, "it decided silently; the user cannot correct what they cannot see"
 
     last = _envelopes(tid)[-1]
     assert "Start" in [o["label"] for o in (last.get("question") or {}).get("options", [])], (
         "after assuming, the next move must be offered")
-    # assumptions reach the chat by EITHER route — the explicit assume pass, or
-    # the model filling the gaps itself. Both must surface them.
+    # Explicitly delegated choices remain visible and editable.
     note = (last.get("question") or {}).get("note") or ""
     assert "Assumed" in note, "the assumptions were not surfaced in the turn that used them"
     assert any(a["payload"].get("assumptions")
@@ -4609,3 +4603,52 @@ def test_failure_exposes_only_current_explicit_retry_question(monkeypatch):
     assert 'paid request' in last['question']['note']
     serialized = json.dumps(last)
     assert 'internal provider detail' not in serialized and 'private traceback detail' not in serialized
+
+
+
+def test_photo_retry_never_delegates_missing_campaign_choices(monkeypatch, tmp_path):
+    from PIL import Image
+    photo = tmp_path / 'retry-product.png'
+    Image.new('RGB', (80, 100), '#142747').save(photo)
+    uid = store.add_upload(photo.name, 'image', str(photo), 'image/png', None)
+    started = campaign.start_campaign('Retry retains questions')
+    cid, tid = started['campaign_id'], started['thread']['id']
+    original = campaign._upload_images
+    attempts = []
+    def first_decode_fails(ids):
+        attempts.append(list(ids))
+        if len(attempts) == 1:
+            raise ModuleNotFoundError('synthetic missing decoder')
+        return original(ids)
+    monkeypatch.setattr(campaign, '_upload_images', first_decode_fails)
+    monkeypatch.setattr(campaign, '_assume_and_proceed', lambda *args: pytest.fail('No user delegation was given'))
+    campaign.handle_event(UserEvent(thread_id=tid, type='text',
+        text='Summer campaign for casual t-shirts for young men', upload_ids=[uid]))
+    assert campaign._context_of(cid).campaign is None
+    assert _envelopes(tid)[-1]['question']['options'][0]['event'] == 'retry'
+    _act(tid, _envelopes(tid)[-1]['artifacts'][0]['id'], 'retry')
+    context = campaign._context_of(cid)
+    assert context.product.image_upload_ids == [uid]
+    assert context.campaign is None and not context.assumptions
+    assert len(attempts) == 2
+    assert store.get_thread(tid)['stage'] == 'intake'
+    last = _envelopes(tid)[-1]
+    assert 'Start' not in [o['label'] for o in last['question']['options']]
+    assert 'goal' in last['question']['text'].lower()
+    for answer in ('yes', 'not sure yet', 'continue'):
+        _text(tid, answer)
+        assert campaign._context_of(cid).campaign is None
+        assert not campaign._context_of(cid).assumptions
+    _text(tid, 'Awareness on Instagram feed')
+    assert campaign._context_of(cid).campaign.objective == 'awareness'
+    assert campaign._context_of(cid).campaign.platforms == ['instagram_feed']
+    assert not campaign._context_of(cid).assumptions
+
+
+def test_normal_intake_rejects_unsolicited_assumptions_but_allows_explicit_choice():
+    current = CampaignContext(name='User context', product=PRODUCT)
+    guessed = CampaignContext(name=current.name, product=PRODUCT, campaign=CAMPAIGN,
+                              assumptions=['Assumed conversions and LinkedIn'])
+    with pytest.raises(AgentValidationError, match='did not delegate'):
+        campaign._validate_intake(guessed, current)
+    assert campaign._validate_intake(guessed, current, allow_assumptions=True) == guessed

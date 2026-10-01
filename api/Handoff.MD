@@ -24,7 +24,7 @@ The first attempted live photo intake failed before provider dispatch: Pillow wa
 ## Workflow preserved
 Conversation fragments → brief → options → templates → script (video) → board → canon → keyframes → generate → creative → QC → delivery.
 Rendering actions remain in the conversation; existing detail controls remain available.
-Missing mock intake fields receive visible assumptions; unconfirmed claims remain unconfirmed.
+Missing campaign details are asked in chat. Only explicit delegation such as “you decide” permits labelled business defaults; unconfirmed claims remain unconfirmed.
 Prepared ceramic-mug examples use this workflow and retain permanent cached mode even after editing.
 
 ## Auth and data
@@ -58,3 +58,9 @@ Paid audit:1 media row/0 text rows; PNG896×1152 (requested4:5),1,587,128bytes; 
 Ordinary runtime is verified live/live, exact API249e/web101a, non-root/read-only, no proof overlays; existing services unchanged.
 Release scope is the reviewed canonical source plus README-only legacy split notices and exact historical scan metadata.
 No commit/push until root reviews the exact candidate. Loop.MD status remains unchanged; no paid golden evals authorized.
+
+
+## Intake choice correction — 2026-10-01, source ready; live acceptance pending
+The corrected Linux image decoded the product photo successfully. Its first successful intake nevertheless returned labelled business assumptions without user delegation. The old driver permitted both count-triggered defaults and new assumptions in ordinary model output. Both are now closed: message count has no effect, normal intake sets assume_mode=false and validates against unsolicited assumptions, and only an explicit “you decide” style request enters assume mode. A product must already be supplied before delegation; no product facts or claims are invented. Retry is not an answer to a clarification. Existing live assumptions are preserved until the root corrects them via the ordinary conversation, rather than silently rewriting the saved campaign.
+
+Full provider-denied suite:267 passed, four local ffmpeg skips, including the actual failed-photo → Retry → missing-goal/platform question regression and isolated PostgreSQL. Root-owned live continuation is pending; no image generation has been verified in this full-flow run yet.

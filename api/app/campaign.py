@@ -1080,6 +1080,9 @@ def _intake_turn(thread_id: str, campaign_id: str, text: str) -> None:
     try:
         _working[thread_id] = "filing what you told me"
         current = _context_of(campaign_id)
+        if re.fullmatch(r"(?:please\s+)?(?:you decide|you choose|choose for me|pick for me|use your judg(?:e)?ment|use reasonable defaults)[.!]?", text.strip(), re.IGNORECASE):
+            _assume_and_proceed(thread_id, campaign_id, current)
+            return
         uploads = list(_ws(thread_id).get("pending_uploads") or [])
         context, log = run_agent(
             agent="campaign_intake",
@@ -1094,6 +1097,7 @@ def _intake_turn(thread_id: str, campaign_id: str, text: str) -> None:
                 # one; the agent puts them in product.image_upload_ids
                 "attached_upload_ids": list(_ws(thread_id).get("pending_uploads") or []),
                 "minimal_start": bool(uploads and text and current.product is None),
+                "assume_mode": False,
             },
             schema=CampaignContext,
             dispatcher=None,
@@ -1141,10 +1145,12 @@ def _intake_turn(thread_id: str, campaign_id: str, text: str) -> None:
         _working.pop(thread_id, None)
 
 
-def _validate_intake(new: CampaignContext, current: CampaignContext) -> CampaignContext:
+def _validate_intake(new: CampaignContext, current: CampaignContext, *, allow_assumptions: bool = False) -> CampaignContext:
     """Intake is a parser with eyes: it may fill blocks, never rename the
     campaign, drop a filled block, or confirm the claims list for the user."""
     errors: list[str] = []
+    if not allow_assumptions and any(note not in current.assumptions for note in new.assumptions):
+        errors.append("The user did not delegate missing business choices. Do not add assumptions; keep unknown blocks null and ask for the missing goal, audience or platform.")
     if new.name.strip() != current.name.strip():
         errors.append(f"name must stay {current.name!r} — the campaign name is the user's, not yours")
     for block in _BLOCKS:
@@ -1209,8 +1215,7 @@ def _autofill_brand(campaign_id: str, context: CampaignContext) -> CampaignConte
 
 def _progress_turn(thread_id: str, context: CampaignContext,
                    before: Optional[CampaignContext] = None,
-                   conversational: bool = False,
-                   allow_assume: bool = True) -> None:
+                   conversational: bool = False) -> None:
     """One progress card + at most ONE question for the next missing field.
 
     The text names WHAT was just filed rather than repeating "Filed." every
@@ -1237,10 +1242,8 @@ def _progress_turn(thread_id: str, context: CampaignContext,
              note="Anything you don't confirm becomes a kill flag at QC — I won't "
                   "quietly drop it. Confirming none of them is allowed.")
     elif complete:
-        # Assumptions can arrive by EITHER route — the explicit assume pass, or
-        # the model deciding on its own that it had enough to fill the gaps.
-        # Surface them the same way whichever way they got here: an assumption
-        # the user cannot see is one they cannot correct at the brief.
+        # Defaults are permitted only after explicit delegation. Historical
+        # saved assumptions remain visible until the user corrects them.
         notes = list(context.assumptions or [])
         _say(thread_id,
              "I filled the gaps so we can get moving." if notes else "That's everything I need.",
@@ -1248,16 +1251,7 @@ def _progress_turn(thread_id: str, context: CampaignContext,
              question="Start the rumination — evidence, options, council review?",
              note=("Assumed — correct any of these at the brief: " + " · ".join(notes[:4]))
                   if notes else None)
-    elif (allow_assume and not (context.product and context.product.image_upload_ids)
-          and _ws(thread_id).get("intake_asks", 0) >= MAX_INTAKE_ASKS):
-        # Stop interrogating and MOVE. An agent that asks a fourth question is
-        # doing the user's job for them badly; the brief gate is a real
-        # approval surface, so the cheapest way to be wrong is to state an
-        # assumption there and let it be corrected in one click.
-        _assume_and_proceed(thread_id, campaign_id_of(thread_id), context)
-        return
     else:
-        _ws(thread_id)["intake_asks"] = _ws(thread_id).get("intake_asks", 0) + 1
         filled = [
             _BLOCK_LABEL[b] for b in _BLOCKS
             if getattr(context, b) is not None
@@ -1268,15 +1262,6 @@ def _progress_turn(thread_id: str, context: CampaignContext,
              question=_combined_question(context))
     store.log_artifact_activity(thread_id, "intake", "proposed",
                                 "complete" if complete else f"next: {_next_field(context)}")
-
-
-# How many times intake may ask before it stops asking and decides.
-# Owner decision 2026-08-26: "the flow should not stop — the agent should ask,
-# and after 2-3 questions take it forward. The user approves the brief anyway,
-# so if they want a change they will ask for it." An approval gate downstream
-# is worth more than an interrogation upstream: it is one click to correct,
-# where a fourth question is another turn of work for the user.
-MAX_INTAKE_ASKS = 2
 
 
 def campaign_id_of(thread_id: str) -> str:
@@ -1296,8 +1281,12 @@ def _assume_and_proceed(thread_id: str, campaign_id: str, context: CampaignConte
     can correct what they cannot see. Assuming silently would be the dishonest
     version of this and is worse than asking a fourth question.
     """
+    if context.product is None:
+        _say(thread_id, "I can choose campaign defaults once the product is clear.",
+             [_progress_artifact(context)], question="What product should the campaign feature? Keep its photo attached.")
+        return
     try:
-        _working[thread_id] = "filling the gaps so we can get moving"
+        _working[thread_id] = "choosing the campaign defaults you requested"
         filled, _log = run_agent(
             agent="campaign_intake.assume",
             prompt_name="campaign_intake",
@@ -1315,7 +1304,7 @@ def _assume_and_proceed(thread_id: str, campaign_id: str, context: CampaignConte
             schema=CampaignContext,
             dispatcher=None,
             use_tools=False,
-            validate=lambda c: _validate_intake(c, context),
+            validate=lambda c: _validate_intake(c, context, allow_assumptions=True),
             mock_fn=getattr(campaign_mock, "mock_campaign_intake", None),
         )
     except Exception as exc:
@@ -1337,7 +1326,7 @@ def _assume_and_proceed(thread_id: str, campaign_id: str, context: CampaignConte
     # An assume response is still untrusted structured output: it may remain
     # incomplete or contain candidate claims requiring the user's permission.
     # Reuse the normal gate, without recursively asking this agent to assume.
-    _progress_turn(thread_id, filled, before=context, allow_assume=False)
+    _progress_turn(thread_id, filled, before=context)
 
 
 def _claims_awaiting_confirmation(context: CampaignContext) -> list[str]:
