@@ -32,6 +32,7 @@ import {
 import { CampaignStyles, PromptModal } from "@/components/campaign-blocks";
 import { useAccount } from "@/components/account-shell";
 import { ownerKey } from "@/lib/client/session";
+import { campaignArtifactForReview, latestCampaignQuestion } from "@/lib/client/campaign-flow";
 import { ArtifactDetail } from "@/components/artifact-detail";
 
 const POLL_MS = 1200;
@@ -52,6 +53,11 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const [busy, setBusy] = useState(false);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [draftFocus, setDraftFocus] = useState<string | null>(null);
+  const [awaitingUpdate, setAwaitingUpdate] = useState(false);
+  const submittedAfter = useRef<number | null>(null);
+  const submitting = useRef(false);
 
   // Which tab the user is looking at, and whether the AGENT is still allowed to
   // move it. Touching a tab yourself takes the wheel — an auto-switch that
@@ -110,7 +116,10 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     try {
       const t = await api.threads.get(threadId, lastSeq.current, signal);
       if (signal.aborted) return;
-      setOffline(false); setError(null);
+      setOffline(false); setConnectionError(null);
+      if (submittedAfter.current !== null && t.messages?.some((m) => m.seq > submittedAfter.current!)) {
+        submittedAfter.current = null; setAwaitingUpdate(false);
+      }
       setThread({ ...t, messages: undefined }); setWorking(t.working ?? null);
       if (t.messages?.length) {
         setMessages((prev) => {
@@ -121,11 +130,12 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
         });
       }
     } catch (e) {
-      if (!signal.aborted && !(e instanceof Error && e.name === "AbortError")) { setOffline(true); setError(e instanceof Error ? e.message : "Thread is unavailable."); }
+      if (!signal.aborted && !(e instanceof Error && e.name === "AbortError")) { setOffline(true); setConnectionError(e instanceof Error ? e.message : "Thread is unavailable."); }
     } finally { polling.current = false; }
   }, [threadId]);
   useEffect(() => {
     lifetime.current = new AbortController(); lastSeq.current = 0; setMessages([]);
+    submittedAfter.current = null; setAwaitingUpdate(false); setDraftFocus(null);
     void poll(); const iv = setInterval(() => void poll(), POLL_MS);
     return () => { clearInterval(iv); lifetime.current?.abort(); };
   }, [poll]);
@@ -143,10 +153,11 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
       brief: [], script: [], cast: [], keyframes: [], creative: [],
     };
     for (const a of live.values()) {
+      if (a.type === "intake_progress" && thread?.stage && thread.stage !== "intake") continue;
       if (isCampaignArtifact(a.type)) out[tabFor(a.type)].push(a);
     }
     return out;
-  }, [messages]);
+  }, [messages, thread?.stage]);
 
   // The newest artifact overall decides where the agent wants you looking.
   const latestTab = useMemo<TabId | null>(() => {
@@ -166,16 +177,9 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestTab, following]);
 
-  // ---- the one live question: the newest agent turn that asked something ----
-  const question = useMemo<{ q: AgentQuestion; msgId: string } | null>(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.role === "user") return null; // already answered
-      const q = (m.envelope as AgentMessage).question;
-      if (q) return { q, msgId: m.id };
-    }
-    return null;
-  }, [messages]);
+  // The newest turn owns the ask. A newer status/error must not resurrect a
+  // prior approval; an accepted request also hides its controls until readback.
+  const question = useMemo(() => awaitingUpdate ? null : latestCampaignQuestion(messages), [messages, awaitingUpdate]);
 
   const [picked, setPicked] = useState<string[]>([]);
   useEffect(() => setPicked([]), [question?.msgId]);
@@ -186,39 +190,48 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   }, [messages, working]);
 
   // ---- input paths (both normalize to UserEvent server-side) ----
-  const sendText = async (uploadIds: string[] = []) => {
-    const text = draft.trim();
-    if ((!text && !uploadIds.length) || busy || offline) return false;
-    setBusy(true);
+  const sendText = async (text: string, uploadIds: string[] = []) => {
+    text = text.trim();
+    if ((!text && !uploadIds.length) || submitting.current || busy || offline || working || awaitingUpdate) return false;
+    submitting.current = true; setBusy(true);
     changeDraft(""); setError(null);
     try {
-      await api.threads.sendText(threadId, text, null, uploadIds);
+      submittedAfter.current = lastSeq.current; setAwaitingUpdate(true);
+      await api.threads.sendText(threadId, text, draftFocus, uploadIds);
+      setDraftFocus(null);
       await poll();
       return true;
     } catch (e) {
+      submittedAfter.current = null; setAwaitingUpdate(false);
       if (e instanceof Error && e.name === "AbortError") return false;
       changeDraft(text); setError(e instanceof Error ? e.message : "Your message was not sent.");
       return false;
     } finally {
-      setBusy(false);
+      submitting.current = false; setBusy(false);
     }
   };
 
   const sendAction = async (artifactId: string, event: string, values: string[] = []) => {
-    if (busy || offline) return;
+    if (submitting.current || busy || offline || working || awaitingUpdate) return false;
     if (event === "feedback") {
-      changeDraft(`feedback ${artifactId} — `);
+      const artifact = Object.values(byTab).flat().find((a) => a.id === artifactId);
+      setDraftFocus(artifactId);
+      changeDraft(`Please change ${artifact?.title ?? "this option"}: `);
       promptRef.current?.focus();
-      return;
+      return false;
     }
-    setBusy(true);
+    submitting.current = true; setBusy(true);
     try {
-      setError(null); await api.threads.sendAction(threadId, artifactId, event, values);
+      setError(null); submittedAfter.current = lastSeq.current; setAwaitingUpdate(true);
+      await api.threads.sendAction(threadId, artifactId, event, values);
       await poll();
+      return true;
     } catch (e) {
+      submittedAfter.current = null; setAwaitingUpdate(false);
       if (e instanceof Error && e.name !== "AbortError") setError(e.message);
+      return false;
     } finally {
-      setBusy(false);
+      submitting.current = false; setBusy(false);
     }
   };
 
@@ -237,7 +250,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const onPromptKey = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
-      sendText();
+      void sendText(draft);
     }
     if (e.key === "ArrowUp" && !draft) {
       const lastUser = [...messages].reverse().find((m) => m.role === "user");
@@ -253,7 +266,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     return (
       <div ref={shell} className="flex items-center justify-center" style={fill} role="status">
         <p className="text-[13px] italic text-muted">
-          {offline ? error ?? "Thread is unavailable — retrying…" : "Loading thread…"}
+          {offline ? connectionError ?? "Thread is unavailable — retrying…" : "Loading thread…"}
         </p>
       </div>
     );
@@ -335,14 +348,14 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
           {error && <p className="form-error mb-2" role="alert">{error}</p>}
           {offline && (
             <p className="mb-1.5 text-[12px] font-semibold text-[var(--ms-text)]">
-              Connection lost — the thread is safe; reconnecting…
+              {connectionError || "Connection lost — reconnecting…"}
             </p>
           )}
 
           {thread?.recovery && (
             <div className="mb-3 rounded-xl border border-[var(--ms-line)] bg-[var(--ms-elev)] p-3">
               <p className="mb-2 text-[12px] text-[var(--ms-text-2)]">{thread.recovery.warning}</p>
-              <button className="cb-btn cb-btn-primary" disabled={busy || offline || Boolean(working)}
+              <button className="cb-btn cb-btn-primary" disabled={busy || offline || Boolean(working) || awaitingUpdate}
                 onClick={() => thread.recovery && sendAction(thread.recovery.artifact_id, thread.recovery.event)}>
                 {busy ? "Retrying…" : thread.recovery.label}
               </button>
@@ -355,7 +368,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
               question={question.q}
               picked={picked}
               onPick={setPicked}
-              busy={busy || offline}
+              busy={busy || offline || Boolean(working) || awaitingUpdate}
               onAnswer={(event, artifactId, values) =>
                 sendAction(artifactId ?? "intake", event, values)
               }
@@ -367,12 +380,14 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
             note={PROMPT_HINT}
             value={draft}
             onValue={changeDraft}
-            onSend={(_text, uploadIds) => sendText(uploadIds)}
+            onSend={sendText}
             onKeyDown={onPromptKey}
             inputRef={promptRef}
-            busy={busy}
+            busy={busy || Boolean(working) || awaitingUpdate}
             offline={offline}
-          />
+          >
+            {draftFocus && <div className="mb-2 flex items-center gap-2 text-[12px] text-[var(--ms-text-2)]"><span>Editing {Object.values(byTab).flat().find((a) => a.id === draftFocus)?.title ?? "selected option"}</span><button type="button" aria-label="Clear editing focus" onClick={() => setDraftFocus(null)}>✕</button></div>}
+          </PromptModal>
         </div>
       </section>
 
@@ -447,20 +462,9 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
           {cards.length ? (
             <div className="space-y-4">
               {cards.map((a) => (
-                // review only — no onAction, so the card renders no buttons.
-                // The CTAs for this card are the options above the composer.
-                // Clicking it opens the full-height detail view; that surface
-                // is read-only for anything that spends, for the same reason.
-                <div
-                  key={a.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Open ${a.title}`}
-                  onClick={() => setDetail(a)}
-                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setDetail(a)}
-                  className="cursor-pointer rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ms-blue,#4B5BFF)]"
-                >
-                  <CampaignArtifactCard artifact={a} readOnly />
+                <div key={a.id}>
+                  <div className="mb-2 flex justify-end"><button type="button" onClick={() => setDetail(a)} className="rounded-md px-2 py-1 text-[12px] font-semibold text-[var(--ms-blue-text)] hover:bg-[var(--ms-blue-wash)]">View details<span className="sr-only">: {a.title}</span></button></div>
+                  <CampaignArtifactCard artifact={campaignArtifactForReview(a, question?.q ?? null)} readOnly />
                 </div>
               ))}
             </div>
@@ -477,14 +481,14 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
 
       {detail && (
         <ArtifactDetail
-          artifact={detail}
+          artifact={campaignArtifactForReview(detail, question?.q ?? null)}
+          busy={busy || offline || Boolean(working) || awaitingUpdate}
           threadId={threadId}
           onClose={() => setDetail(null)}
-          onAction={(artifactId, event) => {
-            // The SAME UserAction the chat option fires. No second approval
-            // path — one fact, one representation.
-            api.threads.sendAction(threadId, artifactId, event).catch(() => undefined);
-            setDetail(null);
+          onAction={async (artifactId, event) => {
+            const accepted = await sendAction(artifactId, event);
+            setDetail(null); // Any validation error remains visible in the conversation.
+            return accepted;
           }}
         />
       )}
@@ -510,7 +514,7 @@ function AgentTurn({ envelope }: { envelope: AgentMessage }) {
           </span>
         )}
       </div>
-      <p className="text-[15px] leading-[24px]">{envelope.text}</p>
+      <p className="whitespace-pre-wrap text-[15px] leading-[24px]">{envelope.text}</p>
     </div>
   );
 }
@@ -552,7 +556,7 @@ function AskStrip({
   };
 
   return (
-    <div className="mb-2.5 rounded-[12px] border border-[var(--ms-blue)] bg-[var(--ms-blue-wash)] px-3.5 py-3">
+    <div className="mb-2.5 max-h-[42dvh] overflow-y-auto rounded-[12px] border border-[var(--ms-blue)] bg-[var(--ms-blue-wash)] px-3.5 py-3">
       <p className="text-[14px] font-semibold leading-[20px]">{question.text}</p>
 
       {choices.length > 0 && (

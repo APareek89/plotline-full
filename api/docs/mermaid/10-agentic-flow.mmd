@@ -2,7 +2,7 @@
 %% files: app/campaign.py, app/examples.py, app/threadkit.py, app/agents/runner.py, app/agents/providers.py, app/config.py, app/usage.py, app/media.py, ../web/app/studio/thread/[threadId]/page.tsx
 %% Current conversation-only flow. Configurable model defaults are shown, not a claim of paid acceptance.
 flowchart TB
-  NAME["Start campaign [FUNCTION]<br/>in: name and verified owner<br/>out: owned campaign and thread"]
+  NAME["Start campaign [FUNCTION]<br/>in: product photo, one-line prompt and verified owner<br/>out: owned campaign and thread"]
   SAMPLE["Prepared intake [FUNCTION]<br/>in: canonical ceramic-mug example ID<br/>out: three stored input fragments and permanent cached mode"]
   MODE{"Execution mode [FUNCTION]<br/>in: persisted campaign plus operator mode<br/>out: fixture or metered live agent path"}
   FIX["Prepared agent output [FUNCTION]<br/>in: saved context and stage schema<br/>out: clearly labelled fixture result, no provider"]
@@ -10,12 +10,12 @@ flowchart TB
   LLM["Campaign agent [AGENT · gpt-5.4-mini default]<br/>in: stage prompt and bounded context<br/>out: structured result or retrieval tool request"]
   TOOLS["Retrieval tool [FUNCTION]<br/>in: allowed corpus query<br/>out: owner upload or labelled sample evidence"]
   VALIDATE["Schema and citation validation [FUNCTION]<br/>in: agent result<br/>out: accepted stage artifact or explicit failure"]
-  INTAKE{"Intake readiness [FUNCTION]<br/>in: accumulated product, campaign and brand<br/>out: required blocks and claims confirmation present?"}
+  INTAKE{"Intake readiness [FUNCTION]<br/>in: accumulated product and explicit campaign facts<br/>out: required business fields and supplied-claim confirmation present?"}
   ASK["Conversation question [FUNCTION]<br/>in: missing fields or artifact actions<br/>out: question and explicit options above composer"]
   BRIEF["Brief review [FUNCTION]<br/>in: validated brief<br/>out: user approval"]
   OPTIONS["Options and review [FUNCTION]<br/>in: planner directions and configured council<br/>out: reviewed selectable directions"]
   DETAIL["Detail and board review [FUNCTION]<br/>in: selected direction, optional style, video script<br/>out: approved shot or image board"]
-  CANON["Canon review [FUNCTION]<br/>in: approved board references<br/>out: approved owner-library identities"]
+  CANON["Canon review [FUNCTION]<br/>in: approved board and owned product-photo references<br/>out: approved owner-library identities"]
   KEYFRAME{"Keyframe gate [FUNCTION]<br/>in: rendered stills and approvals<br/>out: proceed only when every frame is approved"}
   CONFIRM["Generation choice [FUNCTION]<br/>in: proposed single or variants and billing status<br/>out: explicit user render approval"]
   MEDIA["Media adapter [FUNCTION]<br/>in: approved prompt, refs and mode<br/>out: Sample or recorded provider output"]
@@ -32,14 +32,16 @@ flowchart TB
   VALIDATE --> INTAKE
   INTAKE -->|"missing"| ASK
   ASK -.->|"next typed reply retains context"| MODE
-  INTAKE -->|"ready; user selects Start"| BRIEF
+  INTAKE -->|"ready; ordinary yes or go ahead"| BRIEF
   BRIEF -->|"approve"| OPTIONS -->|"approve direction"| DETAIL
   DETAIL -->|"approve board"| CANON -->|"approve canon"| KEYFRAME
   KEYFRAME -->|"all approved"| CONFIRM
   KEYFRAME -->|"not all approved"| ASK
   CONFIRM -->|"explicit choice"| JOB --> MEDIA --> CREATIVE
   CREATIVE -->|"accept"| QC -->|"explicit Deliver"| DONE
-  CREATIVE -.->|"explicit reroll"| JOB
+  CREATIVE -.->|"explicit visual edit rerolls one slot"| JOB
+  CREATIVE -->|"information question: no dispatch"| ASK
+  BRIEF -.->|"brand/context feedback preserves history; new review"| MODE
   JOB -->|"failure or restart"| RECOVER
   RECOVER -.->|"user Retry; session revalidated"| JOB
   classDef agent fill:#dbeafe,stroke:#2563eb,color:#0b2a5b;

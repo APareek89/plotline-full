@@ -34,6 +34,7 @@ export interface CampaignBlock {
   creative_type: CreativeType;
 }
 export interface BrandBlock {
+  name?: string | null;
   url: string | null;
   palette: string[];
   font: string | null;
@@ -400,6 +401,8 @@ export function PromptModal({
   placeholder,
   note,
   attachNote,
+  sendLabel = "Send",
+  onImageAttached,
   value = "",
   onValue,
   onSend,
@@ -414,6 +417,9 @@ export function PromptModal({
   note: React.ReactNode;
   /** Set ⇒ the attach control is inert, and this is the reason it gives. */
   attachNote?: string;
+  sendLabel?: string;
+  /** Successful image attachment can resolve parent validation, not API errors. */
+  onImageAttached?: () => void;
   value?: string;
   onValue?: (value: string) => void;
   /** Omitted ⇒ field and send are inert. Resolves false when the send failed,
@@ -439,6 +445,7 @@ export function PromptModal({
   // other. null ⇒ it works.
   const attachOff =
     attachNote ??
+    (busy ? "Wait for the current step to finish before attaching another image." : null) ??
     (!live || offline
       ? "The prompt bar is offline — nothing would upload."
       : count >= MAX_PROMPT_IMAGES
@@ -459,6 +466,7 @@ export function PromptModal({
     const take = files.slice(0, Math.max(room, 0));
     if (!take.length) return;
     setUploading(`Uploading ${take.length} image${take.length === 1 ? "" : "s"}`);
+    let completed = 0;
     try {
       for (const f of take) {
         session.assert(epoch);
@@ -467,16 +475,19 @@ export function PromptModal({
         const preview = URL.createObjectURL(f);
         created.current.push(preview);
         setAttached((a) => [...a, { id: up.id, filename: up.filename, preview }]);
+        completed++;
+        onImageAttached?.();
       }
     } catch (err) {
-      setError(`Upload failed: ${(err as Error).message} — nothing was attached.`);
+      if (err instanceof Error && err.name === "AbortError") return;
+      setError(`Upload failed: ${(err as Error).message}${completed ? ` — ${completed} uploaded image${completed === 1 ? " remains" : "s remain"} attached.` : ". Your existing attachments are unchanged."}`);
     } finally {
       setUploading(null);
     }
   };
 
   const send = async () => {
-    if (!onSend || busy || offline) return;
+    if (!onSend || busy || offline || uploading) return;
     if (await onSend(value.trim(), attached.map((a) => a.id))) setAttached([]);
   };
 
@@ -490,7 +501,7 @@ export function PromptModal({
   };
 
   return (
-    <div className="cb-line shrink-0 border-t px-5 py-3" style={{ background: "var(--ms-surface,#171B23)" }}>
+    <div className="campaign-prompt cb-line shrink-0 border-t px-5 py-3" style={{ background: "var(--ms-surface,#171B23)" }}>
       <div className="mx-auto w-full max-w-[1180px]">
         {children}
         {error && (
@@ -516,6 +527,7 @@ export function PromptModal({
                   type="button"
                   className="cb-hint px-0.5"
                   aria-label={`Remove ${a.filename}`}
+                  disabled={busy || !!uploading}
                   onClick={() => setAttached((list) => list.filter((x) => x.id !== a.id))}
                 >
                   ✕
@@ -526,7 +538,7 @@ export function PromptModal({
           </div>
         )}
 
-        <div className="cb-elev flex items-end gap-2.5 rounded-[20px] px-3 py-2">
+        <div className="campaign-prompt-row cb-elev flex items-end gap-2.5 rounded-[20px] px-3 py-2">
           {attachOff ? (
             <button
               type="button"
@@ -566,7 +578,7 @@ export function PromptModal({
           <textarea
             ref={inputRef}
             rows={1}
-            className={`cb-input !border-none !bg-transparent max-h-[168px] min-h-[38px] flex-1 resize-none ${
+            className={`cb-input !border-none !bg-transparent max-h-[168px] min-h-[38px] min-w-0 flex-1 resize-none ${
               live && !offline ? "" : "cb-prompt-inert"
             }`}
             placeholder={placeholder}
@@ -603,8 +615,9 @@ export function PromptModal({
             type="button"
             className="cb-btn cb-btn-primary !h-8 !w-8 shrink-0 !p-0"
             onClick={send}
-            disabled={!live || busy || offline || (!value.trim() && !count)}
-            aria-label="Send"
+            disabled={!live || busy || offline || !!uploading || (!value.trim() && !count)}
+            aria-label={sendLabel}
+            title={sendLabel}
           >
             ↑
           </button>
@@ -642,6 +655,7 @@ interface CampaignDraft {
   creative_type: CreativeType;
 }
 interface BrandDraft {
+  name?: string | null;
   url: string;
   palette: string[];
   font: string;
@@ -1340,6 +1354,7 @@ function BrandModal({
   const payload = (over?: Partial<BrandDraft>): BrandBlock => {
     const d = { ...draft, ...over };
     return {
+      name: d.name?.trim() || null,
       url: d.url.trim() || null,
       palette: d.palette,
       font: d.font.trim() || null,

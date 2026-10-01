@@ -265,6 +265,7 @@ export interface CampaignBlock {
 }
 
 export interface BrandBlock {
+  name?: string | null;
   url: string | null;
   palette: string[]; // hex
   font: string | null;

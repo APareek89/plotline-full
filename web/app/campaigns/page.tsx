@@ -264,7 +264,7 @@ export default function CampaignsPage() {
             ? `Nothing matches “${query.trim()}”.`
             : tab === "archived"
               ? "Nothing archived yet — campaigns land here once they go live."
-              : "No campaigns yet. Name one and tell the agent what you're making."}
+              : "No campaigns yet. Add a product photo and a one-line prompt to start."}
         </p>
       )}
 

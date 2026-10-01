@@ -22,7 +22,7 @@ test('production root redirects before rendering the account-gated RSC page', { 
       PATH: process.env.PATH,
       NODE_ENV: 'production',
       NEXT_TELEMETRY_DISABLED: '1',
-      PLOTLINE_DIST_DIR: '.next-integrated',
+      PLOTLINE_DIST_DIR: process.env.PLOTLINE_TEST_DIST_DIR || '.next-integrated',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

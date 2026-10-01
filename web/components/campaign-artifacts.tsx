@@ -110,6 +110,7 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
   return (
     <button
       type="button"
+      data-review-safe
       className={`${BTN_GHOST} !px-2 !py-0.5 !text-[11px]`}
       onClick={(e) => {
         e.stopPropagation();
@@ -342,7 +343,7 @@ function IntakeProgressCard({ artifact, onAction, busy }: CampaignArtifactProps)
   const inProgress = (key: string) => !!next && next.toLowerCase().startsWith(key);
   // the summary reads filled{}, not next_field — a null next_field with an
   // empty block means the intake stalled, not that everything is captured
-  const missing = blocks.filter((b) => !filled[b.key]);
+  const missing = blocks.filter((b) => b.key !== "brand" && !filled[b.key]);
 
   // The OPENING turn ships the four things the agent is listening for. It is a
   // checklist, not a form — there is nothing to type into, because the whole
@@ -355,7 +356,7 @@ function IntakeProgressCard({ artifact, onAction, busy }: CampaignArtifactProps)
       <div className={CARD}>
         <p className={LABEL}>What I need to start</p>
         <p className="mt-1 text-[16px] font-semibold tracking-[-0.01em]">
-          Four things and I can start
+          A product photo and a one-line prompt
         </p>
         <div className="mt-3 overflow-hidden rounded-[10px] border border-[var(--ms-line,#2A3140)]">
           {asks.map((a, i) => (
@@ -385,7 +386,9 @@ function IntakeProgressCard({ artifact, onAction, busy }: CampaignArtifactProps)
       <p className={LABEL}>Intake progress</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {blocks.map((b) =>
-          filled[b.key] ? (
+          b.key === "brand" && !filled.brand ? (
+            <MsChip key={b.key} title="Brand details are optional and can be supplied in chat">Brand · optional</MsChip>
+          ) : filled[b.key] ? (
             <MsChip key={b.key} tone="ok" title={`${b.label} block complete`}>
               {b.label} ✓
             </MsChip>
@@ -401,11 +404,11 @@ function IntakeProgressCard({ artifact, onAction, busy }: CampaignArtifactProps)
         )}
       </div>
       <p className={`mt-2 text-[12px] ${MUTED}`}>
-        {next
+        {next && !next.toLowerCase().startsWith("brand")
           ? `Next: ${next.replace(/[._]/g, " ")}`
           : missing.length
             ? `Still open: ${missing.map((b) => b.label.toLowerCase()).join(", ")} — nothing queued to ask.`
-            : "All blocks captured — ready to ruminate."}
+            : "Ready to plan. Brand details can be added in chat."}
       </p>
       <ActionRow artifact={artifact} onAction={onAction} busy={busy} />
     </div>
@@ -1149,20 +1152,13 @@ export function CampaignArtifactCard({
     onAction: readOnly ? NO_ACTION : (onAction ?? NO_ACTION),
     busy: readOnly ? false : (busy ?? false),
   };
-  // Read-only is enforced STRUCTURALLY, not card by card. Several cards render
-  // their own bespoke button rows (model_confirm's gated cost row, the creative
-  // set's re-roll strip), and gating each one by hand is how exactly one stays
-  // live and re-creates the bug this change exists to remove. A wrapper that
-  // kills pointer events and hides everything from the tab order cannot miss
-  // one; ActionRow's "waiting on you" line is what keeps the card honest about
-  // the fact that a decision is still pending.
+  // Mutation controls belong to the current conversational question. Hide
+  // bespoke no-op buttons structurally; safe copy controls and authenticated
+  // downloads stay usable, including the final campaign bundle.
   if (readOnly) {
     return (
       <ReviewOnly.Provider value={true}>
-        {/* belt as well as braces: the context stops ActionRow drawing buttons,
-            and this stops any bespoke row a card renders itself from being
-            pressable or reachable by keyboard. */}
-        <div className="[&_button]:pointer-events-none [&_a]:pointer-events-none">
+        <div className="campaign-review">
           <CampaignArtifactBody {...props} />
         </div>
       </ReviewOnly.Provider>

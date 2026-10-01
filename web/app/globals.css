@@ -311,3 +311,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .auth-card .auth-google { width:100%; margin-top:16px; justify-content:space-between; }
 .auth-google span { font-size:11px; font-weight:400; }
 .provider-badge { display:inline-flex; padding:2px 6px; border-radius:6px; background:var(--bg-muted); color:var(--fg-secondary); font:400 10px/16px var(--font-body); vertical-align:middle; }
+
+/* Review is read-only for campaign mutations, but copy/download remain live. */
+.campaign-review button:not([data-review-safe]) { display:none; }
+
+@media (max-width:600px) {
+  .campaign-prompt { padding-left:12px; padding-right:12px; }
+  .campaign-prompt-row { flex-wrap:wrap; }
+  .campaign-prompt-row textarea { order:-1; flex:1 0 100%; width:100%; min-height:70px; }
+  .campaign-prompt-row button[aria-label="Model settings"] { margin-left:auto; }
+}

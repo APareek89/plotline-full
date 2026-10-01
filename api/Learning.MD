@@ -687,3 +687,19 @@ The existing prompt-edit route changes the current worker's pending prompt map a
 ## 2026-10-01 — Report the returned media units and dimensions
 
 The sole launch image reroll succeeded through PixelBin `nanoBanana_generate`, returned1 provider credit and stored an exact-version/SHA-verified PNG of896×1152 pixels (1,587,128 bytes). The request selected4:5, but those dimensions are not exactly4:5. USD conversion was unavailable; the ledger's `usage_unavailable` status records that missing monetary information, not a failed image. Acceptance therefore claims one working image reroll and the actual returned credit/dimensions, without a fabricated USD amount, ratio guarantee, live text/video or full-QC claim. Mocked preparation and the earlier browser failure receipts remain distinct evidence.
+
+
+## 2026-10-01 — Test conversation transitions, not only seeded action buttons
+
+**Failure.** A user supplied a summer t-shirt campaign and then “regenerate and use brand - Anand”. The driver rejected the sentence as an unknown command; a required brand-state check and omitted image references also prevented the advertised minimal-start flow.
+
+**Five whys.** (1) The parser handled command-like text only at some stages. (2) Brand name had no schema field and readiness disagreed with the displayed missing fields. (3) Tests seeded complete context and used action events, skipping the user's natural replies. (4) Provider references were verified at keyframes but not from the uploaded product into canon anchors and creative edits. (5) **Deepest why: design and acceptance scope** — local button-path success and one image reroll were treated as evidence for the whole conversational workflow.
+
+**Repair.** Required start input is photo plus prompt; business gaps stay explicit questions. Natural approvals are stage-scoped; literal brand-name edits preserve every unrelated fact, and a rebrief invalidates current derived approvals without deleting history. Uploaded pixels and owner-verified signed references reach the existing vision/media paths. Missing live references fail before rendering. Informational text cannot authorize an implicit reroll; visual edits have explicit verbs and status commands use full phrases.
+
+**Prevention.** The exact conversational flow now runs through the real driver/store/validators with deterministic providers, including restart and delivery. Assertions count four media operations and prove cost/model questions cause zero media, “olive” remains an edit, an incomplete “yes” does not invent business details, and name-only edits cannot change audience or claims. Native plus isolated PostgreSQL contracts pass (263 combined, four local ffmpeg skips). Root-owned live full-flow QA is still required; mocked output is not evidence of product fidelity or provider success.
+
+
+### Same owner, different product: preserve the existing canon identity
+
+The added product-reference equality check initially prevented inappropriate reuse but still wrote the new render under the old human canon slug. The library UPSERT therefore replaced earlier campaign data. The root review caught this before deployment. A real store regression first reproduced the changed row, then verified that a different product receives a deterministic new canon ID, the current board uses that ID after restart, and both old library metadata and old assets remain unchanged. Same-product reuse remains free. Identity validation must include the persistence key and downstream bindings, not only the render inputs.

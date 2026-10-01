@@ -259,7 +259,7 @@ def test_conversation_fills_the_identical_campaign_context(monkeypatch):
     # One entry shorter than it used to be: the turn that only picked a path is
     # gone, so the first thing the user says already fills a block.
     assert progress[0]["payload"]["next_field"] == "opening"
-    assert [p["payload"]["next_field"] for p in progress[1:]] == ["campaign", "brand", None]
+    assert [p["payload"]["next_field"] for p in progress[1:]] == ["campaign", None, None]
     for envelope in _envelopes(tid):
         AgentMessage.model_validate(envelope)
 
@@ -551,7 +551,7 @@ def test_model_confirm_names_the_fixed_stack_whatever_the_user_types():
     _pass_script(tid)
 
     _text(tid, "use fal-ai/flux-pro instead of veo")   # there is no such lever
-    assert _envelopes(tid)[-1]["text"] == "Didn't catch a campaign command."
+    assert _envelopes(tid)[-1]["text"] == "I need a little more detail to make that change."
 
     _act(tid, "detail", "generate_creative")
     confirm = _artifacts(tid, "model_confirm")[-1]["payload"]["confirm"]
@@ -3813,8 +3813,9 @@ def test_a_keyframe_bound_to_a_canon_id_is_seeded_from_that_sheet(monkeypatch):
     assert bound, "no shot binds a canon id — this test would prove nothing"
 
     frames = _artifacts(tid, "keyframe_board")[-1]["payload"]["board"]["frames"]
+    keyframe_prompts = {shot['keyframe_prompt'] for shot in board['shots']}
     keyframe_calls = [c for c in seen if c["kind"] == "image"
-                      and "PANELS, in this exact order" not in c["prompt"]]
+                      and c["prompt"] in keyframe_prompts]
     assert keyframe_calls, "no keyframe was rendered"
 
     seeded = [c for c in keyframe_calls if c["image_urls"]]
@@ -4388,3 +4389,205 @@ def test_assume_result_preserves_explicit_claim_confirmation_gate(monkeypatch):
     saved = store.get_series(cid)["context"]
     assert saved["brand"]["approved_claims"] == BRAND["approved_claims"]
     assert saved["brand"]["claims_confirmed"] is False
+
+
+def test_photo_prompt_brand_revision_and_natural_approvals_reach_delivery(monkeypatch, tmp_path):
+    """User's reported words, real driver/store/validators, no typed command recipe."""
+    from PIL import Image
+    photo = tmp_path / 'tee.png'
+    Image.new('RGB', (80, 100), '#142747').save(photo)
+    upload = store.add_upload('tee.png', 'image', str(photo), 'image/png', None)
+    started = campaign.start_campaign('Summer campaign')
+    cid, tid = started['campaign_id'], started['thread']['id']
+    calls = []
+    original = campaign.generate
+    def capture(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+    monkeypatch.setattr(campaign, 'generate', capture)
+    campaign.handle_event(UserEvent(thread_id=tid, type='text',
+        text='Summer campaign for casual t-shirts for young men', upload_ids=[upload]))
+    initial = campaign._context_of(cid)
+    assert initial.product.image_upload_ids == [upload]
+    assert initial.campaign is None, 'Do not silently invent a business goal'
+    assert _envelopes(tid)[-1]['question'] and not calls
+    _text(tid, 'yes')
+    assert store.get_thread(tid)['stage'] == 'intake'
+    assert campaign._context_of(cid).campaign is None
+    _text(tid, 'Awareness on Instagram feed')
+    assert campaign._context_of(cid).campaign.target_audience == 'young men'
+    _text(tid, 'go ahead')
+    assert store.get_thread(tid)['stage'] == 'brief'
+    _text(tid, 'regenerate and use brand - Anand')
+    assert campaign._context_of(cid).brand.name == 'Anand'
+    assert not campaign._context_of(cid).brand.claims_confirmed
+    assert campaign._context_of(cid).brand.approved_claims == []
+    assert 'Anand' in _artifacts(tid, 'campaign_brief')[-1]['payload']['brief']['brand_role']
+    assert not calls
+    # Restart at the regenerated brief: no older option approval is resurrected.
+    campaign._WORKSPACES.clear()
+    _text(tid, 'looks good')
+    assert store.get_thread(tid)['stage'] == 'options'
+    _text(tid, 'use the first one')
+    assert store.get_thread(tid)['stage'] == 'detail'
+    _text(tid, 'approve the board')
+    assert store.get_thread(tid)['stage'] == 'canon'
+    assert calls[0][1]['image_urls'] == [f'/api/uploads/{upload}']
+    _text(tid, 'yes')
+    assert store.get_thread(tid)['stage'] == 'keyframes'
+    _text(tid, 'go ahead')
+    assert store.get_thread(tid)['stage'] == 'generate'
+    _text(tid, 'just one')
+    assert store.get_thread(tid)['stage'] == 'creative'
+    before = len(calls)
+    for question in ('What does this cost?', 'Which model made it?', 'Why?', 'Can I see this again?'):
+        _text(tid, question)
+        assert len(calls) == before
+        assert _envelopes(tid)[-1]['question'], 'Questions must offer visible clarification without spending'
+        assert store.get_thread(tid)['stage'] == 'creative'
+    _text(tid, 'make the background lighter and the product larger')
+    assert store.get_thread(tid)['stage'] == 'creative'
+    assert len(calls) == before + 1, 'Visual feedback rerolls one image, not the full campaign'
+    assert calls[-1][1]['image_urls'][0] == f'/api/uploads/{upload}'
+    assert 'background lighter' in calls[-1][0][1]
+    _text(tid, 'accept all')
+    assert store.get_thread(tid)['stage'] == 'qc'
+    _text(tid, 'deliver it')
+    assert store.get_thread(tid)['stage'] == 'done'
+    assert store.list_ad_cards(cid)
+    assert len(calls) == 4, 'Anchor + sheet + keyframe + one explicit edit only'
+    assert all(row['cost'] == 0 for row in store.recent_generations(100))
+
+
+def test_brand_revision_preserves_paid_history_and_invalidates_old_approvals(monkeypatch):
+    cid, tid = _ruminated('Existing legacy campaign')
+    _text(tid, 'use the first one')
+    assert campaign._ws(tid)['approved_option'] is not None
+    before = campaign._context_of(cid).model_dump(mode='json')
+    original = campaign.run_agent
+    def no_intake_reinterpretation(**kwargs):
+        assert kwargs['agent'] != 'campaign_intake.revise', 'Literal brand name must not reinterpret other business facts'
+        return original(**kwargs)
+    monkeypatch.setattr(campaign, 'run_agent', no_intake_reinterpretation)
+    _text(tid, 'change brand to Anand')
+    after = campaign._context_of(cid).model_dump(mode='json')
+    after['brand']['name'] = before['brand'].get('name')
+    assert after == before
+    assert store.get_thread(tid)['stage'] == 'brief'
+    assert campaign._context_of(cid).brand.name == 'Anand'
+    assert campaign._context_of(cid).brand.approved_claims == BRAND['approved_claims']
+    campaign._WORKSPACES.clear()
+    ws = campaign._ws(tid)
+    campaign._rehydrate(tid, ws)
+    assert ws['approved_option'] is None and ws['options'] == {} and ws['detail'] is None
+    assert _artifacts(tid, 'campaign_option'), 'Historical artifacts must remain saved'
+
+
+def test_intake_vision_reads_bounded_owned_image_bytes(monkeypatch, tmp_path):
+    from PIL import Image
+    import base64, io
+    image = tmp_path / 'photo.png'
+    Image.new('RGB', (2000, 1500), '#123456').save(image)
+    uid = store.add_upload('photo.png', 'product', str(image), 'image/png', None)
+    monkeypatch.setattr(config, 'MOCK_LLM', False)
+    blocks = campaign._upload_images([uid])
+    assert len(blocks) == 1 and blocks[0]['source']['media_type'] == 'image/jpeg'
+    with Image.open(io.BytesIO(base64.b64decode(blocks[0]['source']['data']))) as decoded:
+        assert max(decoded.size) == 1024
+    with pytest.raises(ValueError, match='no longer available'):
+        campaign._upload_images(['upl_foreign'])
+
+
+def test_natural_gate_commands_are_stage_scoped_and_do_not_hide_change_requests():
+    ws = {'options': {}, 'option_order': [], 'items': [{'slot': 'shot_01_4x5'}]}
+    for stage, event in [('brief', 'approve_brief'), ('script', 'approve_script'),
+                         ('detail', 'approve_board'), ('canon', 'approve_canon'),
+                         ('keyframes', 'approve_keyframes'), ('qc', 'deliver')]:
+        assert campaign._parse(stage, 'yes please', ws)['event'] == event
+    assert campaign._parse('brief', 'approve but use brand Anand', ws)['event'] == 'revise'
+    assert campaign._parse('creative', 'regenerate with the product larger', ws)['event'] == 'reroll_shot_01_4x5'
+    assert campaign._parse('intake', 'start a summer campaign for shirts', ws)['event'] == 'intake'
+
+
+def test_visual_feedback_does_not_match_status_or_question_substrings():
+    ws = {'options': {}, 'option_order': [], 'items': [{'slot': 'shot_01_4x5'}], 'cards': ['card_1']}
+    for text in ('make olive background', 'add another small cloud', 'move the product next to the caption'):
+        assert campaign._parse('creative', text, ws)['event'] == 'reroll_shot_01_4x5'
+    for text in ('What does this cost?', 'Which model made it?', 'Why?', 'Will this reroll again?', 'When is the next one?'):
+        assert campaign._parse('creative', text, ws) is None
+    assert campaign._parse('done', 'mark live', ws)['event'] == 'mark_live'
+    assert campaign._parse('done', 'next creative', ws)['event'] == 'next_creative'
+
+
+def test_live_legacy_campaign_asks_for_owned_photo_before_render(monkeypatch):
+    from app import execution
+    cid, tid = _ruminated('Legacy product without a photo')
+    _text(tid, 'use the first one')
+    context = campaign._context_of(cid)
+    context.product.image_upload_ids = []
+    store.update_series_context(cid, context.model_dump(mode='json'))
+    monkeypatch.setattr(config, 'MOCK_MEDIA', False)
+    monkeypatch.setattr(execution, 'fixture_mode', lambda: False)
+    monkeypatch.setattr(execution, 'is_cached', lambda: False)
+    monkeypatch.setattr(store, 'get_uploads', lambda ids: [])
+    def no_dispatch(*args, **kwargs):
+        pytest.fail('No provider/agent dispatch is allowed while product reference is missing')
+    monkeypatch.setattr(campaign, 'generate', no_dispatch)
+    monkeypatch.setattr(campaign, 'run_agent', no_dispatch)
+    _text(tid, 'approve the board')
+    assert store.get_thread(tid)['stage'] == 'detail'
+    assert 'product photo' in _envelopes(tid)[-1]['question']['text']
+    with pytest.raises(campaign.MediaError, match='Attach a product photo'):
+        campaign._product_reference_urls(context)
+    context.product.image_upload_ids = ['up_foreign']
+    store.update_series_context(cid, context.model_dump(mode='json'))
+    _text(tid, 'approve the board')
+    assert store.get_thread(tid)['stage'] == 'detail'
+    assert 'product photo' in _envelopes(tid)[-1]['question']['text']
+
+
+def test_different_product_canon_preserves_library_and_restart_bindings(monkeypatch):
+    old_cid, old_tid = _ruminated('Earlier product')
+    _text(old_tid, 'use the first one')
+    _text(old_tid, 'approve the board')
+    old_sheet = _artifacts(old_tid, 'canon_sheet')[-1]['payload']['sheets'][0]
+    canon_id = old_sheet['id']
+    old_row = dict(store.get_conn().execute('SELECT * FROM canon_sheets WHERE id=?', (canon_id,)).fetchone())
+    old_assets = {aid: store.get_asset(aid) for aid in old_sheet['asset_ids']}
+
+    new_cid, new_tid = _ruminated('Different uploaded product')
+    context = campaign._context_of(new_cid)
+    context.product.image_upload_ids = ['up_different_product']
+    store.update_series_context(new_cid, context.model_dump(mode='json'))
+    _text(new_tid, 'use the first one')
+    calls = []
+    original = campaign.generate
+    def capture(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+    monkeypatch.setattr(campaign, 'generate', capture)
+    _text(new_tid, 'approve the board')
+    new_sheet = _artifacts(new_tid, 'canon_sheet')[-1]['payload']['sheets'][0]
+    assert dict(store.get_conn().execute('SELECT * FROM canon_sheets WHERE id=?', (canon_id,)).fetchone()) == old_row
+    assert {aid: store.get_asset(aid) for aid in old_assets} == old_assets
+    assert new_sheet['id'] != canon_id
+    assert calls[0][1]['image_urls'] == ['/api/uploads/up_different_product']
+    assert len(calls) == 2
+    new_row = dict(store.get_conn().execute('SELECT * FROM canon_sheets WHERE id=?', (new_sheet['id'],)).fetchone())
+    assert new_row['first_campaign_id'] == new_cid
+    # Reconstruct from durable artifacts, then actually render a keyframe with
+    # the new identity. The earlier campaign's saved board remains unchanged.
+    campaign._WORKSPACES.clear()
+    campaign._rehydrate(new_tid, campaign._ws(new_tid))
+    new_board = campaign._ws(new_tid)['board']
+    assert new_board['shots'][0]['product_refs'] == [new_sheet['id']]
+    assert _artifacts(old_tid, 'campaign_detail')[-1]['payload']['board']['shots'][0]['product_refs'] == [canon_id]
+    _text(new_tid, 'yes')
+    assert store.get_thread(new_tid)['stage'] == 'keyframes'
+    assert calls[-1][1]['image_urls'] == [f"/api/assets/{new_sheet['sheet_asset_id']}/file"]
+    # A repeat request for the same product gets the same new sheet, no spend.
+    before = len(calls)
+    from app.schemas import CanonSheet
+    repeated = campaign._render_canon_views(new_tid, [CanonSheet.model_validate({**new_sheet, 'id': canon_id})], new_cid)
+    assert repeated[0].id == new_sheet['id'] and len(calls) == before
+    assert dict(store.get_conn().execute('SELECT * FROM canon_sheets WHERE id=?', (canon_id,)).fetchone()) == old_row

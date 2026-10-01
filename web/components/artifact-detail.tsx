@@ -52,11 +52,13 @@ export function ArtifactDetail({
   threadId,
   onClose,
   onAction,
+  busy = false,
 }: {
   artifact: ArtifactEnvelope;
   threadId: string;
   onClose: () => void;
-  onAction?: (artifactId: string, event: string) => void;
+  onAction?: (artifactId: string, event: string) => void | Promise<boolean>;
+  busy?: boolean;
 }) {
   const assetId = primaryAssetId(artifact);
   const [meta, setMeta] = useState<AssetMeta | null>(null);
@@ -224,8 +226,9 @@ export function ArtifactDetail({
           {safeActions.map((a) => (
             <button
               key={a.id}
+              disabled={busy || !onAction}
               onClick={() => onAction?.(artifact.id, a.event)}
-              className="rounded-[7px] px-2.5 py-2 text-left text-[12.5px] hover:bg-[var(--ms-elev)]"
+              className="rounded-[7px] px-2.5 py-2 text-left text-[12.5px] hover:bg-[var(--ms-elev)] disabled:opacity-45"
             >
               {a.label}
             </button>

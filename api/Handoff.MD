@@ -1,11 +1,22 @@
 # Plotline — launch handoff
-last-synced: `8edc24c`
+last-synced: `61800c1`
 
 ## Current state — 2026-10-01
 The portfolio launch brief supersedes the earlier local-only hosting/auth/palette rules.
 App6 is live at https://plotline.3-6-183-210.sslip.io in ordinary authenticated live mode.
 Free HTTP/storage, corrected root-entry browser and one real PixelBin image reroll acceptance pass.
 Original Render services and unrelated retrieval/Supabase infrastructure remain untouched.
+
+## Full-flow repair — 2026-10-01, local acceptance complete; live QA pending
+The user has now authorized full paid end-to-end QA and deployment; the root operator alone performs live actions. This supersedes the earlier single-image/local-only approval limit for this repair. The earlier launch evidence below remains historical, not proof of this full flow.
+
+Start now asks only for a product photo and one-line campaign prompt. Missing goal/audience/placement is requested in chat; an absent brand is valid. Plain “yes”/“go ahead” advances only a ready intake or the current review gate. A literal “regenerate and use brand - Anand” updates only the name, retains claims/product/campaign facts, and opens a new brief for approval. Earlier paid assets and messages stay in history; a durable reset marker prevents old approvals returning after restart.
+
+Owned product-photo pixels reach bounded vision intake; exact-version signed references condition product anchors and creative edits. Product canon reuse additionally requires the same product upload IDs. A different product receives a deterministic separate canon ID; its board binding is saved with the canon artifact and survives restart without overwriting the earlier library row. Older live campaigns without an available owned photo are asked to attach one before any new render. A single-image visual edit rerolls one slot; informational questions do not buy media, and exact status commands cannot mistake “olive” for “live”. New brand names never authorize product claims.
+
+Web changes are coordinated separately: photo/prompt start, only the current question's actions, persistent validation errors, working-state fences, natural feedback with panel focus, and working Copy/Download controls in read-only artifact detail.
+
+Final provider-denied native and isolated PostgreSQL suite: 263 passed / 4 skips (ffmpeg is unavailable locally). Full configured testpaths include rag/tests. Seven added regressions cover exact photo/prompt → clarification → ordinary approval → brand revision → four mocked media renders → delivery; unrelated-question zero dispatch; name-only field preservation; bounded owned vision pixels; substring-safe edits; and legacy missing/foreign-reference refusal. Existing auth/RLS/budget/storage tests pass. Evidence: portfolio/_verify/plotline/fullflow-fix-python-canon-final.log. No paid provider call was made by this workstream. Root browser, actual PixelBin/LLM progression, reload and final ZIP evidence remain pending.
 
 ## Workflow preserved
 Conversation fragments → brief → options → templates → script (video) → board → canon → keyframes → generate → creative → QC → delivery.

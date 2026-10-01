@@ -50,6 +50,18 @@ def mock_campaign_intake(payload: dict[str, Any], dispatcher: Optional[ToolDispa
         return _assume_intake(context, payload.get("transcript") or [])
     message = (payload.get("message") or "").strip()
     low = message.lower()
+    brand_name = re.search(r"\bbrand(?:\s+name)?\s*(?:is|to|as|[-:])?\s+([^,;.!]+)", message, re.I)
+    if brand_name:
+        name = brand_name.group(1).strip().strip("-: ")
+        # Only explicit supplied names: a generic "brand details next" isn't one.
+        if name and name.lower() not in ("details next", "details", "policy"):
+            context["brand"] = {**(context.get("brand") or {}), "name": name[:120]}
+    if payload.get("minimal_start") and not context.get("product"):
+        subject = re.search(r"\b(?:campaign|ad)\s+for\s+(.+?)(?:\s+for\s+|$)", message, re.I)
+        label = (subject.group(1) if subject else message).split(',')[0].strip()
+        if label.lower() not in ('this', 'it', 'that', 'this product'):
+            context["product"] = {"name": label[:60], "description": message,
+                                  "image_upload_ids": list(payload.get("attached_upload_ids") or [])}
     for block, cues in _BLOCK_CUES.items():
         if context.get(block) is not None or not any(cue in low for cue in cues):
             continue
@@ -57,6 +69,20 @@ def mock_campaign_intake(payload: dict[str, Any], dispatcher: Optional[ToolDispa
         if filled is not None:
             context[block] = filled
         break
+    if context.get("campaign") is None:
+        messages = [line.removeprefix("user: ") for line in payload.get("transcript", [])
+                    if isinstance(line, str) and line.startswith("user: ")]
+        joined = "\n".join(messages + [message])
+        lowered = joined.lower()
+        objective = next((o for o in ("awareness", "traffic", "conversions") if o in lowered), None)
+        if not objective:
+            objective = "conversions" if "sales" in lowered else "traffic" if "website visits" in lowered else None
+        platforms = [p for p, cues in _PLATFORM_CUES.items() if any(c in lowered for c in cues)]
+        audiences = [m.rsplit(" for ", 1)[1].strip(" .") for m in messages + [message] if " for " in m]
+        audience = audiences[0] if audiences else None
+        if objective and platforms and audience:
+            context["campaign"] = {"objective": objective, "target_audience": audience,
+                                   "platforms": platforms, "creative_type": "video" if "video" in lowered else "image"}
     return context
 
 
@@ -261,7 +287,7 @@ def mock_campaign_brief(payload: dict[str, Any], dispatcher: Optional[ToolDispat
         "target_metric": None,
         "audience_current_belief": "they assume every option in this category is the same",
         "single_message": (claims[0] if claims else product.get("name", "the product"))[:160],
-        "brand_role": f"{product.get('name', 'the product')} does the work on screen",
+        "brand_role": f"{brand.get('name') or ''} {product.get('name', 'the product')} does the work on screen".strip(),
         "offer_cta": "Start now",
         "aspect_ratios": [ratio],
         "duration_s": 6.0 if camp.get("creative_type") == "video" else None,

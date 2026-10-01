@@ -8,7 +8,7 @@ export default function PrivateDownload({ href, children, className, filename }:
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
   async function download(event: React.MouseEvent) {
-    event.preventDefault(); if (busy) return;
+    event.preventDefault(); event.stopPropagation(); if (busy) return;
     const epoch = session.capture(); controller.current = new AbortController(); setBusy(true); setError("");
     try {
       const url = new URL(href, window.location.origin);

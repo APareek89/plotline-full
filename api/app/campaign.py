@@ -20,6 +20,9 @@ means NO style constraint; typed commands and buttons are the same signal.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import io
 import json
 import logging
 import re
@@ -154,6 +157,18 @@ _PLACEMENT_RATIOS: dict[str, dict[str, str]] = {
 _WORKSPACES: dict[str, dict[str, Any]] = {}
 
 
+def _reset_creative(ws: dict[str, Any]) -> None:
+    """Invalidate derived approvals after a changed brief; retain durable assets."""
+    ws.update({"options": {}, "verdicts": {}, "option_order": [], "killed": set(),
+               "approved_option": None, "brief": None, "hook_rack": None,
+               "board": None, "detail": None, "canon": [], "keyframes": None,
+               "template": None, "style_block": None, "ratios": [],
+               "variant_specs": [], "variant_group_id": None, "variant_count": 1,
+               "items": [], "assets": {}, "accepted": set(), "reference": None,
+               "cards": [], "resuming": False})
+    ws["prompts"].clear()
+
+
 def _ws(thread_id: str) -> dict[str, Any]:
     """Per-thread driver state. `prompts` deliberately ALIASES the Creative
     Studio workspace map so the existing POST /api/threads/{id}/prompts/{slot}
@@ -186,11 +201,18 @@ def _rehydrate(thread_id: str, ws: dict[str, Any]) -> None:
         return
     ws["hydrated"] = True
     for message in store.get_messages(thread_id):
+        if message["role"] == "user":
+            uploads = message.get("envelope", {}).get("upload_ids") or []
+            ws["pending_uploads"] = list(dict.fromkeys(list(ws.get("pending_uploads") or []) + uploads))[:8]
         if message["role"] != "agent":
             continue
         for artifact in message["envelope"].get("artifacts", []):
             kind, payload = artifact.get("type"), artifact.get("payload") or {}
-            if kind == "campaign_option" and payload.get("option"):
+            if kind == "intake_progress" and payload.get("reset_creative"):
+                _reset_creative(ws)
+                ws["revision_note"] = payload.get("revision_note", "")
+                ws["revision_after"] = message["created_at"]
+            elif kind == "campaign_option" and payload.get("option"):
                 option = CampaignOption.model_validate(payload["option"])
                 ws["options"][option.option_id] = option
                 if option.option_id not in ws["option_order"]:
@@ -208,6 +230,8 @@ def _rehydrate(thread_id: str, ws: dict[str, Any]) -> None:
                 ws["hook_rack"] = payload["rack"]
             elif kind == "canon_sheet" and payload.get("sheets"):
                 ws["canon"] = payload["sheets"]
+                if payload.get("board"):
+                    ws["board"] = payload["board"]
             elif kind == "keyframe_board" and payload.get("board"):
                 ws["keyframes"] = payload["board"]
             elif kind == "campaign_detail" and payload.get("detail"):
@@ -236,6 +260,8 @@ def _rehydrate(thread_id: str, ws: dict[str, Any]) -> None:
                 ws["variant_group_id"] = ws["variant_group_id"] or payload["card"].get("variant_group_id")
     for option_id in ws["option_order"]:
         activity = store.get_artifact_activity(thread_id, option_id)
+        if ws.get("revision_after"):
+            activity = [e for e in activity if e["created_at"] > ws["revision_after"]]
         if any(e["event"] == "approved" for e in activity):
             ws["approved_option"] = ws["options"][option_id]
         if any(e["event"] == "downgraded" for e in activity):
@@ -249,7 +275,7 @@ def _rehydrate(thread_id: str, ws: dict[str, Any]) -> None:
         ws["variant_group_id"] = store.new_id("vgrp")
 
 
-_RECOVERABLE_JOBS = {"_intake_turn", "_brief_turn", "_options_turn", "_board_turn", "_script_turn",
+_RECOVERABLE_JOBS = {"_intake_turn", "_revise_turn", "_brief_turn", "_options_turn", "_board_turn", "_script_turn",
                      "_canon_turn", "_keyframes_turn", "_resheet_turn", "_confirm_turn", "_assemble_turn",
                      "_templates_turn", "_after_templates", "_refine_turn", "_generate_turn", "_reroll_turn", "_qc_turn"}
 
@@ -418,10 +444,10 @@ def start_campaign(name: str) -> dict[str, Any]:
 # listening for, and nothing here is a field the user types into.
 INTAKE_ASKS = [
     {"id": "images", "label": "Product images",
-     "note": "Drop them in the composer — I read them rather than guess.", "need": "optional"},
+     "note": "One product photo is enough to start.", "need": "needed"},
     {"id": "what", "label": "What we're making", "note": "One line is enough.", "need": "needed"},
-    {"id": "where", "label": "Where it runs", "note": "Sets ratio and duration.", "need": "needed"},
-    {"id": "who", "label": "Who it's for", "note": "Drives hook and pacing.", "need": "needed"},
+    {"id": "where", "label": "Where it runs", "note": "We can decide this in chat.", "need": "optional"},
+    {"id": "who", "label": "Who it's for", "note": "We can decide this in chat.", "need": "optional"},
 ]
 
 
@@ -498,6 +524,9 @@ def handle_event(event: UserEvent) -> None:
     ws["campaign_id"] = thread["series_id"]
     _rehydrate(event.thread_id, ws)
     stage = thread["stage"]
+    if stage == "intake":
+        context = _context_of(thread["series_id"])
+        ws["intake_ready"] = not missing_blocks(context) and not _claims_awaiting_confirmation(context)
 
     if event.type == "action":
         # A multi-select answer travels as `values`; everything else has none,
@@ -512,6 +541,9 @@ def handle_event(event: UserEvent) -> None:
         # as structured ids rather than as words inside the message
         ws["pending_uploads"] = list(dict.fromkeys(
             list(ws.get("pending_uploads") or []) + list(event.upload_ids)))
+    if event.upload_ids and stage != "intake":
+        context = _apply_pending_uploads(event.thread_id, _context_of(thread["series_id"]))
+        store.update_series_context(thread["series_id"], context.model_dump(mode="json"))
     parsed = _parse(stage, text, ws, panel_focus=event.panel_focus)
     if parsed is None:
         _hint(event.thread_id, _HINTS.get(stage, "Tell me what to change, or use the buttons on the cards."))
@@ -523,6 +555,15 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
     thread_id, campaign_id = thread["id"], thread["series_id"]
     ws = _ws(thread_id)
     ws["campaign_id"] = campaign_id
+
+    media_event = event in {"approve_board", "approve_canon", "skip_canon", "resheet_canon",
+                           "regenerate_keyframes", "generate_single", "generate_draft", "generate_rest"} or event.startswith(("reroll_", "generate_variants_"))
+    if media_event and not _require_product_photo(thread_id, _context_of(campaign_id)):
+        return
+
+    if event == "revise" and isinstance(extra, str):
+        _spawn(thread_id, _revise_turn, thread_id, campaign_id, extra)
+        return
 
     if event == "retry":
         job = ws.get("retry") or recovery_job(thread)
@@ -644,7 +685,8 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
         if event == "regenerate":
             note = extra if isinstance(extra, str) else None
             store.log_artifact_activity(thread_id, artifact_id, "refine_requested", note)
-            _spawn(thread_id, _options_turn, campaign_id, thread_id, note, [artifact_id])
+            targets = [artifact_id] if artifact_id in ws["options"] else None
+            _spawn(thread_id, _options_turn, campaign_id, thread_id, note, targets)
             return
 
     # ---- step 4: templates
@@ -766,13 +808,44 @@ _HINTS = {
 def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str] = None) -> Optional[dict[str, Any]]:
     """Deterministic command grammar — buttons and typing emit identical
     events. No model is consulted for approvals, picks or counts."""
-    low = text.lower()
+    low = text.lower().strip()
     if not low:
         return None
     note = (_NOTE_RE.search(text).group(1).strip() if _NOTE_RE.search(text) else None)
+    if re.search(r"\b(?:fal-ai/|(?:use|switch to)\s+(?:gpt-|claude-|veo|flux))", low):
+        return None  # Model routing is configured by the operator, not prose.
+
+    # Gate approvals use the current stage, never a model or an earlier card.
+    approval = re.fullmatch(r"(?:please\s+)?(?:approve|approved|accept|accepted|looks good|look good|lgtm|yes|yes please|go ahead|continue|proceed)(?:\s+(?:it|this|the\s+)?(?:brief|script|board|canon|keyframes|all))?[.!]?", low)
+    gate = {
+        "brief": ("approve_brief", "brief"), "script": ("approve_script", "script"),
+        "detail": ("approve_board", "board"), "canon": ("approve_canon", "canon"),
+        "keyframes": ("approve_keyframes", "keyframes"), "qc": ("deliver", "qc"),
+    }
+    if stage in gate and (approval or (stage == "qc" and low in ("deliver", "deliver it", "ship it"))):
+        event, target = gate[stage]
+        return {"event": event, "artifact_id": target}
+    if stage == "canon" and low in ("skip", "skip canon", "no canon"):
+        return {"event": "skip_canon", "artifact_id": "canon"}
+    regenerate = re.fullmatch(r"(?:please\s+)?(?:regenerate|regen|redo|try again)(?:\s+(?:it|this|the\s+)?(?:brief|script|board|keyframes))?[.!]?", low)
+    regen_gate = {"brief": "regenerate_brief", "script": "regenerate_script",
+                  "detail": "regenerate_board", "keyframes": "regenerate_keyframes"}
+    if regenerate and stage in regen_gate:
+        return {"event": regen_gate[stage], "artifact_id": stage}
+    # A brand/product/audience correction is context, even if it begins with
+    # "regenerate". Re-brief it rather than discarding the words after a command.
+    identity_edit = re.search(
+        r"\b(?:brand(?:\s+name)?\s*(?:is|:|-)\s*\S|(?:use|change|set|switch|update)\s+(?:the\s+)?brand\b|"
+        r"(?:change|switch|replace)\s+(?:the\s+)?product\s+(?:to|with)\b|audience|platform|objective)\b", low)
+    if stage != "intake" and identity_edit:
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
+    if stage in ("brief", "script", "canon", "keyframes"):
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
 
     if stage == "intake":
-        if re.match(r"^\s*(start|begin|go|ruminate|ready)\b", low):
+        if approval and ws.get("intake_ready"):
+            return {"event": "begin", "artifact_id": "intake"}
+        if re.fullmatch(r"(?:start|begin|go|ruminate|ready)(?:\s+(?:now|please|the campaign))?[.!]?", low):
             return {"event": "begin", "artifact_id": "intake"}
         # Everything else is the user briefing us. There is no path to pick and
         # no card to fill — typing IS the intake.
@@ -780,13 +853,17 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
 
     if stage == "options":
         target = _option_target(text, ws, panel_focus)
-        if re.match(r"^\s*(approve|accept|use|go with|pick|choose)\b", low) and target:
+        if (approval or re.match(r"^\s*(approve|accept|use|go with|pick|choose)\b", low)) and target:
             return {"event": "approve", "artifact_id": target}
         if re.match(r"^\s*(regenerate|regen|redo|rework|change|tweak|fix|feedback)\b", low) and target:
             return {"event": "regenerate", "artifact_id": target, "extra": note or text}
         if target:
             return {"event": "regenerate", "artifact_id": target, "extra": note or text}
-        return None
+        if regenerate:
+            return {"event": "regenerate", "artifact_id": "options", "extra": text}
+        if approval:
+            return None  # Several options: ask which one, never silently pick.
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
 
     if stage == "templates":
         if "skip" in low or "no template" in low or "without" in low:
@@ -794,7 +871,7 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
         for tpl in templates():
             if tpl["id"].lower() in low:
                 return {"event": f"pick_{tpl['id']}", "artifact_id": "templates"}
-        return None
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
 
     if stage == "detail":
         if ("generate" in low and "creative" in low) or low.strip() in ("generate", "go", "make it"):
@@ -802,9 +879,11 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
         target = _detail_target(text, ws)
         if target:
             return {"event": "refine", "artifact_id": "detail", "extra": {"target": target, "note": text}}
-        return None
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
 
     if stage == "generate":
+        if approval:
+            return {"event": "generate_single", "artifact_id": "confirm"}
         if "draft" in low:
             return {"event": "generate_draft", "artifact_id": "confirm"}
         if "variant" in low or "test" in low:
@@ -817,23 +896,29 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
         return None
 
     if stage in ("creative", "done"):
-        if "reference" in low:
+        if re.match(r"^(?:please\s+)?(?:use|set)\b.+\bas (?:a )?reference\b", low):
             slot = _asset_slot(text, ws)
             if slot:
                 return {"event": f"use_as_reference_{slot}", "artifact_id": "creative"}
             return None
-        if any(w in low for w in ("re-roll", "reroll", "redo", "again")):
-            slot = _asset_slot(text, ws)
+        if re.match(r"^(?:please\s+)?(?:re-roll|reroll|redo|regenerate|try again)\b", low):
+            slot = _asset_slot(text, ws) or (ws["items"][0]["slot"] if len(ws["items"]) == 1 else None)
             if slot:
                 return {"event": f"reroll_{slot}", "artifact_id": "creative", "extra": note or text}
             return None
-        if re.match(r"^\s*(accept|approve|ship|lgtm)\b", low):
+        if approval or re.match(r"^\s*(accept|approve|ship|lgtm)\b", low):
             return {"event": "accept_all", "artifact_id": "creative"}
-        if "live" in low or "posted" in low:
+        if re.fullmatch(r"(?:mark (?:it |this )?live|(?:it is |it's )?live|posted|i posted it)[.!]?", low):
             card_id = ws["cards"][-1] if ws["cards"] else "card"
             return {"event": "mark_live", "artifact_id": card_id}
-        if "next" in low or "another" in low:
+        if re.fullmatch(r"(?:next|another)(?: creative| one)?[.!]?", low):
             return {"event": "next_creative", "artifact_id": "card"}
+        # Questions and commentary are not permission to buy another render.
+        edit = re.match(r"^(?:(?:please|can you|could you)\s+)?(?:make|change|adjust|add|remove|brighten|darken|crop|enlarge|shrink|move|replace|reduce|increase)\b\s+\S", low)
+        if stage == "creative" and edit:
+            slot = _asset_slot(text, ws) or (ws["items"][0]["slot"] if len(ws["items"]) == 1 else None)
+            if slot:
+                return {"event": f"reroll_{slot}", "artifact_id": "creative", "extra": text}
         return None
 
     return None
@@ -891,7 +976,95 @@ def _asset_slot(text: str, ws: dict[str, Any]) -> Optional[str]:
 
 
 def _hint(thread_id: str, text: str) -> None:
-    _say(thread_id, "Didn't catch a campaign command.", question=text)
+    _say(thread_id, "I need a little more detail to make that change.", question=text)
+
+
+def _upload_images(upload_ids: list[str]) -> list[dict[str, Any]]:
+    """Read verified owner uploads, resize for bounded vision input, never URLs."""
+    if config.MOCK_LLM:
+        return []
+    from app.execution import is_cached
+    if is_cached():
+        return []
+    from PIL import Image, ImageOps
+    rows = {row["id"]: row for row in store.get_uploads(upload_ids)}
+    blocks = []
+    for uid in upload_ids[:4]:
+        row = rows.get(uid)
+        if not row or row.get("content_type") not in ("image/png", "image/jpeg", "image/webp"):
+            raise ValueError("Product image is no longer available; attach it again")
+        path = store.file_path(row, "uploads")
+        if path.stat().st_size > 15 * 1024 * 1024:
+            raise ValueError("Product image exceeds the upload limit")
+        with Image.open(path) as original:
+            if original.width * original.height > 25_000_000:
+                raise ValueError("Product image dimensions exceed the vision limit")
+            image = ImageOps.exif_transpose(original).convert("RGB")
+            image.thumbnail((1024, 1024))
+            output = io.BytesIO()
+            image.save(output, format="JPEG", quality=85)
+        blocks.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                        "data": base64.b64encode(output.getvalue()).decode("ascii")}})
+    return blocks
+
+
+def _literal_brand_name(text: str) -> Optional[str]:
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?(?:regenerate\s+and\s+)?(?:use|change|set|switch|update)\s+(?:the\s+)?brand(?:\s+name)?\s*(?:(?:to|as|is)\s+|[-:]\s*)?([\w][\w '&.-]{0,119}?)\s*[.!]?\s*",
+        text, re.IGNORECASE)
+    if not match:
+        return None
+    name = match.group(1).strip().rstrip(".")
+    if re.search(r"\b(?:and|but|also|with|audience|objective|platform|product)\b", name, re.IGNORECASE):
+        return None  # Compound feedback still goes through bounded intake.
+    return name or None
+
+
+def _revise_turn(thread_id: str, campaign_id: str, text: str) -> None:
+    """Apply ordinary conversation to the context, then review a fresh brief.
+
+    Existing paid files stay in history; none is silently rerendered or approved.
+    The durable reset marker prevents a restart resurrecting superseded choices.
+    """
+    try:
+        _working[thread_id] = "updating the brief from your feedback"
+        current = _context_of(campaign_id)
+        brand_name = _literal_brand_name(text)
+        if brand_name is not None:
+            # A literal name change has no reason to reinterpret the product,
+            # audience, objective, platforms, or previously confirmed claims.
+            context = current.model_copy(update={"brand": (current.brand or BrandBlock()).model_copy(update={"name": brand_name})})
+        else:
+            context, _ = run_agent(
+                agent="campaign_intake.revise", prompt_name="campaign_intake",
+                model=config.STAGE_MODELS["intake"],
+                user_payload={"context": current.model_dump(mode="json"), "message": text,
+                              "transcript": _transcript(thread_id), "filled": context_filled(current),
+                              "attached_upload_ids": list(_ws(thread_id).get("pending_uploads") or [])},
+                schema=CampaignContext, dispatcher=None, use_tools=False,
+                validate=lambda c: _validate_intake(c, current),
+                mock_fn=campaign_mock.mock_campaign_intake)
+        context = _apply_pending_uploads(thread_id, context)
+        store.update_series_context(campaign_id, context.model_dump(mode="json"))
+        ws = _ws(thread_id)
+        _reset_creative(ws)
+        ws["revision_note"] = text
+        store.clear_checkpoints(thread_id)
+        _say(thread_id, "I've updated the direction; review the new brief before we render anything else.",
+             [ArtifactEnvelope(type="intake_progress", id="intake", title="Updated direction",
+                               payload={"reset_creative": True, "revision_note": text,
+                                        "filled": context_filled(context)})])
+        if missing_blocks(context) or _claims_awaiting_confirmation(context):
+            store.set_thread_stage(thread_id, "intake")
+            _progress_turn(thread_id, context, before=current)
+            return
+        _autofill_brand(campaign_id, context)
+        store.set_thread_stage(thread_id, "brief")
+        _brief_turn(thread_id, campaign_id)
+    except Exception as exc:
+        _fail(thread_id, "I couldn't apply that change; your previous work is still saved.", str(exc))
+    finally:
+        _working.pop(thread_id, None)
 
 
 # ------------------------------------------------------ step 2: intake turn --
@@ -903,6 +1076,7 @@ def _intake_turn(thread_id: str, campaign_id: str, text: str) -> None:
     try:
         _working[thread_id] = "filing what you told me"
         current = _context_of(campaign_id)
+        uploads = list(_ws(thread_id).get("pending_uploads") or [])
         context, log = run_agent(
             agent="campaign_intake",
             prompt_name="campaign_intake",
@@ -915,6 +1089,7 @@ def _intake_turn(thread_id: str, campaign_id: str, text: str) -> None:
                 # ids of images the user attached to this message or an earlier
                 # one; the agent puts them in product.image_upload_ids
                 "attached_upload_ids": list(_ws(thread_id).get("pending_uploads") or []),
+                "minimal_start": bool(uploads and text and current.product is None),
             },
             schema=CampaignContext,
             dispatcher=None,
@@ -930,6 +1105,7 @@ def _intake_turn(thread_id: str, campaign_id: str, text: str) -> None:
             # council — a web result must never become the evidence behind a
             # claim, which is what the retrieval corpus is for.
             web_search=True,
+            extra_content_blocks=_upload_images(uploads),
         )
         context = _apply_pending_uploads(thread_id, context)
         store.update_series_context(campaign_id, context.model_dump(mode="json"))
@@ -971,6 +1147,8 @@ def _validate_intake(new: CampaignContext, current: CampaignContext) -> Campaign
         if getattr(current, block) is not None and getattr(new, block) is None:
             errors.append(f"you dropped the already-filled {block} block — return the FULL context, "
                           "adding only what the new message told you")
+    if current.product and new.product and not set(current.product.image_upload_ids).issubset(new.product.image_upload_ids):
+        errors.append("Existing product image ids must be retained")
     was_confirmed = bool(current.brand and current.brand.claims_confirmed)
     if new.brand and new.brand.claims_confirmed and not was_confirmed:
         errors.append("claims_confirmed is the user's one-tap confirmation in the Brand card — "
@@ -1066,7 +1244,8 @@ def _progress_turn(thread_id: str, context: CampaignContext,
              question="Start the rumination — evidence, options, council review?",
              note=("Assumed — correct any of these at the brief: " + " · ".join(notes[:4]))
                   if notes else None)
-    elif allow_assume and _ws(thread_id).get("intake_asks", 0) >= MAX_INTAKE_ASKS:
+    elif (allow_assume and not (context.product and context.product.image_upload_ids)
+          and _ws(thread_id).get("intake_asks", 0) >= MAX_INTAKE_ASKS):
         # Stop interrogating and MOVE. An agent that asks a fourth question is
         # doing the user's job for them badly; the brief gate is a real
         # approval surface, so the cheapest way to be wrong is to state an
@@ -1210,8 +1389,6 @@ def _next_field(context: CampaignContext) -> Optional[str]:
         return "product"
     if context.campaign is None:
         return "campaign"
-    if context.brand is None:
-        return "brand"
     return None
 
 
@@ -1219,9 +1396,9 @@ def _next_field(context: CampaignContext) -> Optional[str]:
 # conversational intake never asks about it — an empty brand block means "no
 # brand constraints", which is true, and the Brand card is still there to edit.
 _CRITICAL_ASK = {
-    "product": "what the product is — its name and one line on what it actually does",
-    "campaign": "the objective (awareness, traffic or conversions), who it is for, "
-                "and which platforms it runs on",
+    "product": "what the product is — one line and a product photo are enough",
+    "campaign": "the campaign goal (awareness, website visits or sales), audience, "
+                "and placement (for example Instagram feed)",
 }
 
 
@@ -2383,6 +2560,8 @@ def _prompt_artifact(slot: str, model: str, text: str, cost: float, ratio: str,
 
 def _generate_turn(thread_id: str, campaign_id: str, variant_count: int, draft_only: bool) -> None:
     try:
+        if not _require_product_photo(thread_id, _context_of(campaign_id)):
+            return
         ws = _ws(thread_id)
         detail = ws.get("detail")
         if not detail:
@@ -2478,6 +2657,40 @@ def _seed_url(asset_id: str, asset: dict[str, Any]) -> Optional[str]:
         ref = json.loads(asset["storage_ref"]) if asset.get("storage_ref") else None
         return signed_reference(require_execution().owner_id, ref) if ref else None
     return (asset.get("params") or {}).get("url")
+
+
+def _require_product_photo(thread_id: str, context: CampaignContext) -> bool:
+    """Older live campaigns must supply an owned photo before any new render."""
+    from app.execution import fixture_mode, is_cached
+    if config.MOCK_MEDIA or is_cached() or fixture_mode():
+        return True
+    ids = list(context.product.image_upload_ids) if context.product else []
+    rows = {row["id"]: row for row in store.get_uploads(ids)}
+    if ids and all(uid in rows and rows[uid].get("storage_ref") and
+                   rows[uid].get("content_type") in ("image/png", "image/jpeg", "image/webp") for uid in ids):
+        return True
+    _say(thread_id, "I need an available product photo before rendering; nothing has been generated.",
+         question="Attach a product photo here, then say ‘go ahead’ or repeat your requested edit.")
+    return False
+
+
+def _product_reference_urls(context: CampaignContext) -> list[str]:
+    """Keep the supplied product identity in media; only sign owned exact refs."""
+    from app.execution import is_cached, require_execution, fixture_mode
+    ids = list(context.product.image_upload_ids) if context.product else []
+    if config.MOCK_MEDIA or is_cached() or fixture_mode():
+        return [f"/api/uploads/{uid}" for uid in ids]
+    if not ids:
+        raise MediaError("Attach a product photo before rendering")
+    from app.media_storage import signed_reference
+    rows = {row["id"]: row for row in store.get_uploads(ids)}
+    urls = []
+    for uid in ids:
+        row = rows.get(uid)
+        if not row or row.get("content_type") not in ("image/png", "image/jpeg", "image/webp") or not row.get("storage_ref"):
+            raise MediaError("The product photo is unavailable; attach it again before rendering")
+        urls.append(signed_reference(require_execution().owner_id, json.loads(row["storage_ref"])))
+    return urls
 
 
 def _render_slot(thread_id: str, context: CampaignContext, ws: dict[str, Any],
@@ -2702,6 +2915,8 @@ def _reroll_turn(thread_id: str, slot: str, note: Optional[str]) -> None:
             return
         campaign_id = ws["campaign_id"]
         context = _context_of(campaign_id)
+        if not _require_product_photo(thread_id, context):
+            return
         detail = ws["detail"]
         spec = next((s for s in ws["variant_specs"] if s["variant_id"] == item["variant_id"]), None) \
             if item["variant_id"] else None
@@ -2722,7 +2937,12 @@ def _reroll_turn(thread_id: str, slot: str, note: Optional[str]) -> None:
         seed = int(time.time()) % 10_000
         if ws.get("reference") and ws["reference"].get("seed") is not None:
             seed = int(ws["reference"]["seed"])
-        frame = generate("image", prompt, ratio=item["ratio"], tier="final", seed=seed)
+        references = _product_reference_urls(context)
+        previous = store.get_asset(item["asset_id"])
+        if previous and (previous_url := _seed_url(item["asset_id"], previous)):
+            references.append(previous_url)
+        frame = generate("image", prompt, ratio=item["ratio"], tier="final", seed=seed,
+                         image_urls=references)
         frame_id = store.add_asset(thread_id, key_slot, frame.get("kind", "image"), frame["path"],
                                    {**_params(context, ws, prompt, frame, item["ratio"],
                                               item["variant_id"], source["slot"]), "reroll": True},
@@ -3272,7 +3492,8 @@ def _brief_turn(thread_id: str, campaign_id: str) -> None:
         brief, _log = run_agent(
             agent="campaign_brief", prompt_name="campaign_brief",
             model=config.STAGE_MODELS["brief"],
-            user_payload={"context": context.model_dump(mode="json")},
+            user_payload={"context": context.model_dump(mode="json"),
+                          "user_feedback": ws.get("revision_note")},
             schema=CampaignBrief, dispatcher=None, use_tools=False,
             validate=lambda b: _validate_brief(b, context),
             mock_fn=campaign_mock.mock_campaign_brief)
@@ -3459,6 +3680,8 @@ def _shot_cost(shot: Any) -> float:
 def _canon_turn(thread_id: str, campaign_id: str) -> None:
     """v3 §6 — the sheets the board actually references, and nothing else."""
     try:
+        if not _require_product_photo(thread_id, _context_of(campaign_id)):
+            return
         _working[thread_id] = "planning the canon sheets"
         ws = _ws(thread_id)
         _require(ws, "canon")
@@ -3489,7 +3712,7 @@ def _canon_turn(thread_id: str, campaign_id: str) -> None:
              "every future campaign.",
              [ArtifactEnvelope(
                  type="canon_sheet", id="canon", title="Canon sheets",
-                 payload={"sheets": ws["canon"]},
+                 payload={"sheets": ws["canon"], "board": ws.get("board")},
                  actions=_actions(("approve_canon", "Approve canon", "primary"),
                                   ("resheet_canon", "Re-render sharper", "secondary"),
                                   ("skip_canon", "Skip sheets", "secondary")))],
@@ -3525,6 +3748,8 @@ def _resheet_turn(thread_id: str, campaign_id: str) -> None:
     upgrade would silently hand back the same 1K sheet and charge for it.
     """
     try:
+        if not _require_product_photo(thread_id, _context_of(campaign_id)):
+            return
         _working[thread_id] = "re-rendering the canon sheets"
         ws = _ws(thread_id)
         planned = [CanonSheet.model_validate(s) for s in (ws.get("canon") or [])]
@@ -3546,7 +3771,7 @@ def _resheet_turn(thread_id: str, campaign_id: str) -> None:
              "Re-rendered the canon sheets. " + _media_billing_note(),
              [ArtifactEnvelope(
                  type="canon_sheet", id="canon", title="Canon sheets",
-                 payload={"sheets": ws["canon"]},
+                 payload={"sheets": ws["canon"], "board": ws.get("board")},
                  actions=_actions(("approve_canon", "Approve canon", "primary"),
                                   ("skip_canon", "Skip sheets", "secondary")))],
              question="Approve these sheets, or skip them and accept the drift?",
@@ -3588,6 +3813,8 @@ def _keyframes_turn(thread_id: str, campaign_id: str) -> None:
     """v3 §7 — THE HARD GATE. Stills are generated and must be approved before
     any motion is paid for."""
     try:
+        if not _require_product_photo(thread_id, _context_of(campaign_id)):
+            return
         _working[thread_id] = "rendering keyframes"
         ws = _ws(thread_id)
         _require(ws, "keyframes")
@@ -3986,9 +4213,29 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
     A voice sheet has no views: it is auditioned on the real line, not viewed.
     """
     out = []
+    product = _context_of(campaign_id).product
+    product_uploads = list(product.image_upload_ids) if product else []
     for sheet in sheets:
         existing = store.get_canon_sheet(sheet.id)
-        if existing and existing.get("asset_ids"):
+        anchor_asset = store.get_asset(existing.get("anchor_asset_id")) if existing and existing.get("anchor_asset_id") else None
+        same_product = (not product_uploads or sheet.kind != "product" or
+                        bool(anchor_asset and (anchor_asset.get("params") or {}).get("product_pack") == product_uploads))
+        if existing and not same_product:
+            # The owner library's human slug may already describe a different
+            # product. Keep that row/provenance immutable; bind this board to a
+            # deterministic product-specific identity that is reusable later.
+            previous_id = sheet.id
+            digest = hashlib.sha256(json.dumps(product_uploads).encode()).hexdigest()[:16]
+            sheet = sheet.model_copy(deep=True, update={"id": f"{previous_id[:80]}-{digest}"})
+            existing = store.get_canon_sheet(sheet.id)
+            anchor_asset = store.get_asset(existing.get("anchor_asset_id")) if existing and existing.get("anchor_asset_id") else None
+            if existing and (not anchor_asset or (anchor_asset.get("params") or {}).get("product_pack") != product_uploads):
+                raise MediaError("Canon identity conflict; choose a new product identity before rendering")
+            same_product = True
+            ws = _ws(thread_id)
+            for shot in (ws.get("board") or {}).get("shots", []):
+                shot["product_refs"] = [sheet.id if ref == previous_id else ref for ref in shot.get("product_refs", [])]
+        if existing and existing.get("asset_ids") and same_product:
             reused = CanonSheet.model_validate(
                 {k: v for k, v in existing.items() if not k.startswith("_")})
             store.log_artifact_activity(
@@ -4004,13 +4251,17 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
             # as a reference, so the panels are views of one subject rather than
             # six independent readings of a sentence.
             anchor_prompt = _canon_anchor_prompt(sheet)
+            product_refs = _product_reference_urls(_context_of(campaign_id)) if sheet.kind == "product" else []
+            if product_refs:
+                anchor_prompt += " Use the uploaded product exactly; preserve its shape, colours and visible markings."
             anchor = generate("image", anchor_prompt, ratio="1:1",
-                              tier=config.CANON_SHEET_TIER, resolution=want)
+                              tier=config.CANON_SHEET_TIER, resolution=want, image_urls=product_refs)
             anchor_id = store.add_asset(
                 thread_id, f"canon_{sheet.id}_anchor", anchor.get("kind", "image"),
                 anchor["path"],
                 {"provider": anchor.get("provider"), "consumed_credits": anchor.get("consumed_credits"), "provider_job_id": anchor.get("provider_job_id"), "model": anchor["model"], "prompt": anchor_prompt, "canon_id": sheet.id,
                  "ratio": "1:1", "resolution": want, "role": "anchor",
+                 "product_pack": product_uploads if sheet.kind == "product" else [],
                  "url": anchor.get("url")},
                 anchor["cost"])
             store.log_generation(thread_id, anchor_id, "generate", prompt=anchor_prompt,

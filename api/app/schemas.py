@@ -712,6 +712,8 @@ class CampaignBlock(Strict):
 
 
 class BrandBlock(Strict):
+    # A supplied brand identity is not a product claim and needs no claim approval.
+    name: Optional[str] = Field(default=None, max_length=120)
     url: Optional[str] = None
     palette: list[str] = Field(default_factory=list)  # hex
     font: Optional[str] = None
@@ -748,9 +750,7 @@ class CampaignContext(Strict):
 
     @property
     def complete(self) -> bool:
-        return bool(
-            self.product and self.campaign and self.brand and self.brand.claims_confirmed
-        )
+        return bool(self.product and self.campaign)
 
 
 # The placement spec table. ONE source — AdCard._spec_table and CampaignBrief
