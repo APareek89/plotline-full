@@ -2823,7 +2823,7 @@ def _inherited_prompt(ws: dict[str, Any], shot: dict[str, Any], ratio: str,
 
 def _visual_prompt(context: CampaignContext, ws: dict[str, Any], vdetail: dict[str, Any],
                    shot: dict[str, Any]) -> str:
-    parts = [shot["visual_prompt"]]
+    parts = [_neutral_render_prompt(shot["visual_prompt"], ws.get("style_block"))]
     style = vdetail.get("style_ref")
     if style and style.get("style_descriptors"):
         parts.append("Style reference: " + ", ".join(style["style_descriptors"])
@@ -3968,6 +3968,22 @@ def _canon_reference_urls(
     return pairs, unusable
 
 
+def _neutral_render_prompt(prompt: str, style: Optional[dict[str, Any]]) -> str:
+    """Correct only the exact old server-generated neutral prefix.
+
+    A custom block, missing provenance or user-authored suffix is never rewritten.
+    Explicit prompt overrides bypass generated prompt construction altogether.
+    """
+    current = neutral_style_block()
+    legacy = current.model_copy(update={"negatives": ["text overlay", "watermark", "logo"]})
+    if style != legacy.model_dump(mode="json"):
+        return prompt
+    old_prefix = legacy.as_prompt() + " · "
+    if not prompt.startswith(old_prefix):
+        return prompt
+    return current.as_prompt() + " · " + prompt[len(old_prefix):]
+
+
 def _render_keyframe(thread_id: str, shot: dict[str, Any], ratio: str,
                      ws: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """One still per shot, conditioned on the approved canon sheets it binds.
@@ -3978,7 +3994,8 @@ def _render_keyframe(thread_id: str, shot: dict[str, Any], ratio: str,
     """
     tier = "final" if shot.get("model_route") != "image_pro" else "pro"
     pairs, unusable = _canon_reference_urls(ws or {}, shot)
-    frame = generate("image", shot["keyframe_prompt"], ratio=ratio, tier=tier,
+    prompt = _neutral_render_prompt(shot["keyframe_prompt"], (ws or {}).get("style_block"))
+    frame = generate("image", prompt, ratio=ratio, tier=tier,
                      image_urls=[url for _, url in pairs])
     # What ACTUALLY conditioned this frame, not what the board asked for. The
     # slot budget may have dropped some (Stage 1) and a sheet may have been
@@ -3989,11 +4006,11 @@ def _render_keyframe(thread_id: str, shot: dict[str, Any], ratio: str,
     dropped = unusable + [d["why"] for d in (frame.get("dropped_refs") or [])]
     asset_id = store.add_asset(
         thread_id, f"keyframe_{shot['slot']}", frame.get("kind", "image"), frame["path"],
-        {"provider": frame.get("provider"), "consumed_credits": frame.get("consumed_credits"), "provider_job_id": frame.get("provider_job_id"), "model": frame["model"], "prompt": shot["keyframe_prompt"], "ratio": ratio,
+        {"provider": frame.get("provider"), "consumed_credits": frame.get("consumed_credits"), "provider_job_id": frame.get("provider_job_id"), "model": frame["model"], "prompt": prompt, "ratio": ratio,
          "shot_slot": shot["slot"], "refs": used, "refs_dropped": dropped,
          "url": frame.get("url")},
         frame["cost"])
-    store.log_generation(thread_id, asset_id, "generate", prompt=shot["keyframe_prompt"],
+    store.log_generation(thread_id, asset_id, "generate", prompt=prompt,
                          model=frame["model"], seed=str(frame.get("seed")), cost=frame["cost"])
     return {"asset_id": asset_id, "cost": frame["cost"], "refs_used": used, "dropped": dropped, "provider": frame.get("provider"), "model": frame.get("model")}
 

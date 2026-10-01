@@ -1047,7 +1047,8 @@ def neutral_style_block(block_id: str = "sb_neutral") -> StyleBlock:
         lens="50mm equivalent, mid aperture, no distortion",
         texture=REALISM_TEXTURE["natural"],
         motion="locked off",
-        negatives=["text overlay", "watermark", "logo"],
+        negatives=["text overlay", "watermark",
+                   "added logos or wordmarks; preserve markings already on the referenced product"],
         realism="natural",
         derived_from=None,
     )

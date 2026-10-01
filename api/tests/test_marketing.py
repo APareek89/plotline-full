@@ -4762,3 +4762,47 @@ def test_rehydrated_qc_does_not_accept_replaced_asset():
     _text(tid,'yes')
     assert not store.list_ad_cards(cid)
     assert not campaign._ws(tid)['accepted']
+
+
+@pytest.mark.parametrize("case", ["new", "legacy", "custom_style", "custom_prompt", "no_style"])
+def test_keyframe_preserves_product_marks_only_for_known_neutral_prefix(monkeypatch, tmp_path, case):
+    from app.schemas import neutral_style_block
+    current = neutral_style_block()
+    legacy = current.model_copy(update={"negatives": ["text overlay", "watermark", "logo"]})
+    suffix = "Keep the supplied navy shirt and AP chest mark; a custom word logo stays untouched."
+    style = (current if case == "new" else legacy).model_dump(mode="json")
+    prompt = (current if case == "new" else legacy).as_prompt() + " · " + suffix
+    expected = current.as_prompt() + " · " + suffix
+    if case == "custom_style":
+        style["derived_from"] = "user_template"
+        expected = prompt
+    elif case == "custom_prompt":
+        prompt = "My own composition; avoid logo additions, keep AP."
+        expected = prompt
+    elif case == "no_style":
+        style = None
+        expected = prompt
+    started = campaign.start_campaign("Marks fixture")
+    tid = started['thread']['id']
+    sent=[]
+    def render(kind, text, **kwargs):
+        sent.append(text)
+        dest=tmp_path/'frame.svg'
+        dest.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+        return {'path':str(dest),'kind':'image','model':'fixture','cost':0,'refs_used':[]}
+    monkeypatch.setattr(campaign,'generate',render)
+    shot={'slot':'shot_01','model_route':'image_final','keyframe_prompt':prompt}
+    result=campaign._render_keyframe(tid,shot,'1:1',{'style_block':style})
+    assert sent == [expected]
+    assert shot['keyframe_prompt'] == prompt, 'Historical authored board remains unchanged'
+    assert store.get_asset(result['asset_id'])['params']['prompt'] == expected
+    assert store.get_generation_log(tid)[-1]['prompt'] == expected
+    if case in ('new','legacy'):
+        assert 'preserve markings already on the referenced product' in expected
+        assert 'avoid: text overlay, watermark, logo' not in expected
+    # The generated creative prompt uses the same correction; later explicit
+    # prompt edits still bypass this constructor and remain verbatim.
+    ctx=CampaignContext(name='Marks',product=PRODUCT,campaign=CAMPAIGN,brand=BRAND)
+    visual=campaign._visual_prompt(ctx,{'style_block':style},{'creative_type':'image'},
+                                    {'visual_prompt':prompt})
+    assert visual.startswith(expected)
