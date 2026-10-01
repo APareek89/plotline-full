@@ -15,6 +15,7 @@ flowchart TB
   BRIEF["Brief review [FUNCTION]<br/>in: validated brief<br/>out: user approval"]
   OPTIONS["Options and review [FUNCTION]<br/>in: planner directions and configured council<br/>out: reviewed selectable directions"]
   DETAIL["Detail and board review [FUNCTION]<br/>in: selected direction, optional style, video script<br/>out: approved shot or image board"]
+  ENV["Targeted environment correction [FUNCTION]<br/>in: explicit background edit and owned photo context<br/>out: two new renders, retained history, revised board binding"]
   CANON["Canon review [FUNCTION]<br/>in: approved board and owned product-photo references<br/>out: approved owner-library identities"]
   KEYFRAME{"Keyframe gate [FUNCTION]<br/>in: rendered stills and approvals<br/>out: proceed only when every frame is approved"}
   CONFIRM["Generation choice [FUNCTION]<br/>in: proposed single or variants and billing status<br/>out: explicit user render approval"]
@@ -35,6 +36,8 @@ flowchart TB
   INTAKE -->|"ready; ordinary yes or go ahead"| BRIEF
   BRIEF -->|"approve"| OPTIONS -->|"approve direction"| DETAIL
   DETAIL -->|"approve board"| CANON -->|"approve canon"| KEYFRAME
+  CANON -.->|"explicit environment edit only"| ENV --> CANON
+  CANON -->|"information question: current actions, no dispatch"| ASK
   KEYFRAME -->|"all approved"| CONFIRM
   KEYFRAME -->|"not all approved"| ASK
   CONFIRM -->|"explicit choice"| JOB --> MEDIA --> CREATIVE
@@ -50,7 +53,7 @@ flowchart TB
   classDef term fill:#e5e7eb,stroke:#6b7280,color:#111827;
   classDef ask fill:#cffafe,stroke:#0891b2,color:#083344;
   classDef data fill:#ede9fe,stroke:#7c3aed,color:#2a0a4a;
-  class NAME,SAMPLE,FIX,RESERVE,TOOLS,VALIDATE,BRIEF,OPTIONS,DETAIL,CANON,CONFIRM,MEDIA,CREATIVE,QC,JOB fn;
+  class NAME,SAMPLE,FIX,RESERVE,TOOLS,VALIDATE,BRIEF,OPTIONS,DETAIL,CANON,ENV,CONFIRM,MEDIA,CREATIVE,QC,JOB fn;
   class MODE,INTAKE,KEYFRAME dec;
   class ASK,RECOVER ask;
   class LLM agent;

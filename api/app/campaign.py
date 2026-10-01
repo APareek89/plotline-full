@@ -284,7 +284,7 @@ def _rehydrate(thread_id: str, ws: dict[str, Any]) -> None:
 
 
 _RECOVERABLE_JOBS = {"_intake_turn", "_revise_turn", "_brief_turn", "_options_turn", "_board_turn", "_script_turn",
-                     "_canon_turn", "_keyframes_turn", "_resheet_turn", "_confirm_turn", "_assemble_turn",
+                     "_canon_turn", "_revise_environment_turn", "_keyframes_turn", "_resheet_turn", "_confirm_turn", "_assemble_turn",
                      "_templates_turn", "_after_templates", "_refine_turn", "_generate_turn", "_reroll_turn", "_qc_turn"}
 
 
@@ -567,7 +567,7 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
     ws = _ws(thread_id)
     ws["campaign_id"] = campaign_id
 
-    media_event = event in {"approve_board", "approve_canon", "skip_canon", "resheet_canon",
+    media_event = event in {"approve_board", "approve_canon", "skip_canon", "resheet_canon", "revise_environment",
                            "regenerate_keyframes", "generate_single", "generate_draft", "generate_rest"} or event.startswith(("reroll_", "generate_variants_"))
     if media_event and not _require_product_photo(thread_id, _context_of(campaign_id)):
         return
@@ -637,6 +637,9 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
         return
 
     if stage == "canon":
+        if event == "revise_environment" and isinstance(extra, str):
+            _spawn(thread_id, _revise_environment_turn, thread_id, campaign_id, artifact_id, extra)
+            return
         if event in ("approve_canon", "skip_canon"):
             store.log_artifact_activity(
                 thread_id, "canon", "approved" if event == "approve_canon" else "skipped",
@@ -854,6 +857,11 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
         r"(?:change|switch|replace)\s+(?:the\s+)?product\s+(?:to|with)\b|audience|platform|objective)\b", low)
     if stage != "intake" and identity_edit:
         return {"event": "revise", "artifact_id": "intake", "extra": text}
+    if stage == "canon":
+        environments = [s for s in ws.get("canon", []) if s.get("kind") == "environment"]
+        if _environment_edit(text) and len(environments) == 1:
+            return {"event": "revise_environment", "artifact_id": environments[0]["id"], "extra": text}
+        return None  # A question or ambiguous target does not buy a new brief or render.
     if stage in ("brief", "script", "canon", "keyframes"):
         return {"event": "revise", "artifact_id": "intake", "extra": text}
 
@@ -991,7 +999,24 @@ def _asset_slot(text: str, ws: dict[str, Any]) -> Optional[str]:
 
 
 def _hint(thread_id: str, text: str) -> None:
+    ws = _ws(thread_id)
+    if (store.get_thread(thread_id) or {}).get("stage") == "canon" and ws.get("canon"):
+        _say(thread_id, "No images were rendered; describe the background change, or use the current review actions.",
+             [ArtifactEnvelope(type="canon_sheet", id="canon", title="Current canon sheets",
+                 payload={"sheets": ws["canon"], "board": ws.get("board")},
+                 actions=_actions(("approve_canon", "Approve canon", "primary"),
+                                  ("resheet_canon", "Re-render sharper", "secondary"),
+                                  ("skip_canon", "Skip sheets", "secondary")))],
+             question="Approve the current sheets, skip them, or describe one background change?",
+             note="An explicit background correction renders its anchor and sheet; other sheets stay unchanged.")
+        return
     _say(thread_id, "I need a little more detail to make that change.", question=text)
+
+
+def _environment_edit(text: str) -> bool:
+    low = text.lower().strip()
+    return bool(re.match(r"^(?:please\s+)?(?:remove|clear|make|change|fix|replace|redo|regenerate)\b", low)
+                and re.search(r"\b(?:background|environment|backdrop|bottle)\b", low))
 
 
 def _upload_images(upload_ids: list[str]) -> list[dict[str, Any]]:
@@ -3829,6 +3854,49 @@ def _resheet_turn(thread_id: str, campaign_id: str) -> None:
         _working.pop(thread_id, None)
 
 
+def _revise_environment_turn(thread_id: str, campaign_id: str, canon_id: str, note: str) -> None:
+    """Explicit background edit: retain prior sheets, replace one binding only."""
+    try:
+        if not _require_product_photo(thread_id, _context_of(campaign_id)):
+            return
+        ws = _ws(thread_id)
+        original = [s for s in ws.get("canon", []) if s.get("kind") == "environment"]
+        if len(original) != 1 or original[0].get("id") != canon_id or not _environment_edit(note) or len(note) > 4000:
+            _hint(thread_id, "Which background should change, and what should it look like?")
+            return
+        _working[thread_id] = "revising only the environment anchor and sheet (2 media operations)"
+        previous = CanonSheet.model_validate(original[0])
+        suffix = hashlib.sha256(json.dumps([thread_id, previous.id, note]).encode()).hexdigest()[:16]
+        revised = previous.model_copy(deep=True, update={
+            "id": f"{previous.id[:70]}-edit-{suffix}", "version": previous.version + 1,
+            "brief": previous.brief + " User correction: " + note.strip(),
+            "asset_ids": [], "coverage": {}, "anchor_asset_id": None,
+            "sheet_asset_id": None, "sheet_url": None})
+        # No deletes or old-library UPSERT: if a render fails, the previous
+        # review state remains intact. Rebind only after both outputs exist.
+        result = _render_canon_views(thread_id, [revised], campaign_id)[0]
+        board = json.loads(json.dumps(ws.get("board") or {}))
+        for shot in board.get("shots", []):
+            shot["env_refs"] = [result.id if value == previous.id else value for value in shot.get("env_refs", [])]
+        sheets = [result.model_dump(mode="json") if s.get("id") == previous.id else s for s in ws["canon"]]
+        _say(thread_id, "Updated only the environment; the product sheet and earlier renders are retained. " + _media_billing_note(),
+             [ArtifactEnvelope(type="canon_sheet", id="canon", title="Canon sheets · environment revised",
+                payload={"sheets": sheets, "board": board},
+                actions=_actions(("approve_canon", "Approve canon", "primary"),
+                                 ("resheet_canon", "Re-render sharper", "secondary"),
+                                 ("skip_canon", "Skip sheets", "secondary")))],
+             question="Review the revised background and product sheet, then approve or describe a change?",
+             note="This background correction uses two media operations; previous images remain in history.")
+        ws["canon"], ws["board"] = sheets, board
+        store.log_artifact_activity(thread_id, "canon", "refined", f"environment {previous.id} replaced by {result.id}; earlier sheets retained")
+    except MediaError as exc:
+        _media_fail(thread_id, exc, None, "environment")
+    except Exception as exc:
+        _fail(thread_id, f"Environment correction failed: {exc}", traceback.format_exc())
+    finally:
+        _working.pop(thread_id, None)
+
+
 def _validate_canon_plan(plan: "CanonPlan", board: dict[str, Any]) -> "CanonPlan":
     """Every board reference resolves, and nothing unused is planned. Canon is
     expensive and reusable — an unused sheet spends money on nothing."""
@@ -4182,6 +4250,14 @@ def _canon_summary(sheets: list) -> str:
     return f"One labelled sheet each, {views} composed view(s) in total. " + _media_billing_note()
 
 
+def _environment_constraints(sheet: "CanonSheet") -> str:
+    requested = " ".join([sheet.brief, *sheet.locks]).lower()
+    if re.search(r"\b(?:empty|bare) (?:background|environment|backdrop|location|studio|set)\b|"
+                 r"\bmake (?:it|the background|the environment) empty\b|\bno (?:distracting )?props\b", requested):
+        return "Keep this requested empty background clear of products, people, bottles, packaging, props and logos."
+    return "Do not remove furnishings or features explicitly requested in the location brief."
+
+
 def _canon_anchor_prompt(sheet: "CanonSheet") -> str:
     """ONE canonical view of the subject, rendered before the sheet.
 
@@ -4194,6 +4270,13 @@ def _canon_anchor_prompt(sheet: "CanonSheet") -> str:
     The anchor is deliberately plain — one subject, one angle, nothing to
     interpret. Its job is to fix identity, not to be pretty.
     """
+    if sheet.kind == "environment":
+        return (f"A wide establishing view of this environment: {sheet.brief}. "
+                + ("Location constraints: " + "; ".join(sheet.locks + sheet.risk_notes) + ". " if sheet.locks or sheet.risk_notes else "")
+                + "The supplied product photo is context only, not a subject to reproduce: remove the product completely. "
+                  "Show only explicitly requested location features, background surfaces and lighting; leave clear space for a product to be added later. "
+                  "No unrequested products, people, bottles, packaging, props, branding or text; no watermarks. "
+                + _environment_constraints(sheet))
     view = {"character": "a straight-on full-figure front view",
             "environment": "a wide establishing view",
             }.get(sheet.kind, "a straight-on three-quarter front view")
@@ -4247,6 +4330,10 @@ def _canon_sheet_prompt(sheet: "CanonSheet", views: tuple[str, ...],
                         "in every panel — same proportions, same colours, same markings, same "
                         "materials. Do not restyle, redesign or improve it; only change the "
                         "camera angle.")
+    if sheet.kind == "environment":
+        parts.append("LOCATION ONLY in every panel: retain explicitly requested location features, surfaces and lighting; "
+                     "no unrequested products, people, bottles, packaging, props, branding or text except panel captions. "
+                     + _environment_constraints(sheet))
     parts.append(
         "CRITICAL — negatives. Any photographic artifact in a reference image "
         "(a diagonal stripe or band, an overlay, a watermark, a backdrop seam, a "
@@ -4314,8 +4401,8 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
             # as a reference, so the panels are views of one subject rather than
             # six independent readings of a sentence.
             anchor_prompt = _canon_anchor_prompt(sheet)
-            product_refs = _product_reference_urls(_context_of(campaign_id)) if sheet.kind == "product" else []
-            if product_refs:
+            product_refs = _product_reference_urls(_context_of(campaign_id)) if sheet.kind in ("product", "environment") else []
+            if product_refs and sheet.kind == "product":
                 anchor_prompt += " Use the uploaded product exactly; preserve its shape, colours and visible markings."
             anchor = generate("image", anchor_prompt, ratio="1:1",
                               tier=config.CANON_SHEET_TIER, resolution=want, image_urls=product_refs)
@@ -4325,6 +4412,7 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
                 {"provider": anchor.get("provider"), "consumed_credits": anchor.get("consumed_credits"), "provider_job_id": anchor.get("provider_job_id"), "model": anchor["model"], "prompt": anchor_prompt, "canon_id": sheet.id,
                  "ratio": "1:1", "resolution": want, "role": "anchor",
                  "product_pack": product_uploads if sheet.kind == "product" else [],
+                 "context_product_pack": product_uploads if sheet.kind == "environment" else [],
                  "url": anchor.get("url")},
                 anchor["cost"])
             store.log_generation(thread_id, anchor_id, "generate", prompt=anchor_prompt,

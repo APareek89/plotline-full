@@ -4632,6 +4632,94 @@ def test_different_product_canon_preserves_library_and_restart_bindings(monkeypa
 
 
 
+@pytest.mark.parametrize("fail_sheet", [False, True])
+def test_targeted_environment_edit_preserves_history_and_restart_binding(monkeypatch, fail_sheet):
+    from app import media
+    from app.schemas import CanonSheet
+    board_mock = campaign_mock.mock_shot_board
+    def board_with_environment(payload, dispatcher):
+        board = board_mock(payload, dispatcher)
+        board["shots"][0]["env_refs"] = ["@backdrop"]
+        return board
+    monkeypatch.setattr(campaign_mock, "mock_shot_board", board_with_environment)
+    cid, tid = _ruminated("Owned product and background")
+    _text(tid, "use the first one")
+    # Exercise actual live billing/envelope and reference branches; only the
+    # provider boundary is a deterministic, network-denied image fixture.
+    monkeypatch.setattr(config, "MOCK_MEDIA", False)
+    monkeypatch.setattr(campaign, "_seed_url", lambda aid, asset: f"/api/assets/{aid}/file")
+    calls = []
+    def render(kind, prompt, **kwargs):
+        calls.append({"prompt": prompt, **kwargs})
+        if fail_sheet and len(calls) == 6:
+            raise media.MediaError("synthetic second render rejection")
+        dest = config.ASSET_DIR / f"env_fixture_{len(calls)}.svg"
+        media._mock_image(prompt, kwargs.get("ratio", "1:1"), dest)
+        return {"path": str(dest), "kind": "image", "model": "fixture-only",
+                "provider": "fixture", "cost": 0, "consumed_credits": 1}
+    monkeypatch.setattr(campaign, "generate", render)
+    _text(tid, "approve the board")
+    assert store.get_thread(tid)["stage"] == "canon"
+    assert len(calls) == 4
+    original = json.loads(json.dumps(campaign._ws(tid)["canon"]))
+    product = next(s for s in original if s["kind"] == "product")
+    environment = next(s for s in original if s["kind"] == "environment")
+    rows = {s["id"]: dict(store.get_conn().execute("SELECT * FROM canon_sheets WHERE id=?", (s["id"],)).fetchone()) for s in original}
+    assets = {aid: store.get_asset(aid) for s in original for aid in s["asset_ids"]}
+    old_board = json.loads(json.dumps(campaign._ws(tid)["board"]))
+    assert calls[2]["image_urls"] == [f"/api/uploads/{uid}" for uid in PRODUCT["image_upload_ids"]]
+    assert "context only" in calls[2]["prompt"] and "remove the product completely" in calls[2]["prompt"]
+    assert "Use the uploaded product exactly" not in calls[2]["prompt"]
+    monkeypatch.setattr(campaign, "run_agent", lambda **kwargs: pytest.fail("Background edits must not replan with an LLM"))
+    for question in ("why is there a bottle?", "how do I remove the background?", "what model changes the background?"):
+        _text(tid, question)
+        assert len(calls) == 4
+        assert any(o["event"] == "approve_canon" for o in _envelopes(tid)[-1]["question"]["options"])
+    _text(tid, "remove the bottle from the background; make it empty")
+    assert len(calls) == 6
+    assert calls[4]["image_urls"] == calls[2]["image_urls"]
+    assert "requested empty background" in calls[4]["prompt"]
+    assert "requested empty background" in calls[5]["prompt"]
+    assert {key: dict(store.get_conn().execute("SELECT * FROM canon_sheets WHERE id=?", (key,)).fetchone()) for key in rows} == rows
+    assert {aid: store.get_asset(aid) for aid in assets} == assets
+    if fail_sheet:
+        assert campaign._ws(tid)["canon"] == original
+        assert campaign._ws(tid)["board"] == old_board
+        assert _envelopes(tid)[-1]["question"]["options"][0]["event"] == "retry"
+    else:
+        revised = next(s for s in campaign._ws(tid)["canon"] if s["kind"] == "environment")
+        assert revised["id"] != environment["id"]
+        assert revised["version"] == environment["version"] + 1
+        assert calls[5]["image_urls"] == [f"/api/assets/{revised['anchor_asset_id']}/file"]
+        assert next(s for s in campaign._ws(tid)["canon"] if s["kind"] == "product") == product
+        assert _envelopes(tid)[-1]["artifacts"][0]["payload"]["sheets"] == campaign._ws(tid)["canon"]
+    campaign._WORKSPACES.clear()
+    campaign._rehydrate(tid, campaign._ws(tid))
+    restored = campaign._ws(tid)
+    assert next(s for s in restored["canon"] if s["kind"] == "product") == product
+    assert restored["board"]["shots"][0]["product_refs"] == old_board["shots"][0]["product_refs"]
+    if fail_sheet:
+        assert restored["canon"] == original and restored["board"] == old_board
+    else:
+        assert next(s for s in restored["canon"] if s["kind"] == "environment") == revised
+        assert restored["board"]["shots"][0]["env_refs"] == [revised["id"]]
+        # Canon approval actually feeds the corrected sheet to the next image.
+        _text(tid, "yes")
+        assert store.get_thread(tid)["stage"] == "keyframes"
+        assert f"/api/assets/{revised['sheet_asset_id']}/file" in calls[-1]["image_urls"]
+        assert f"/api/assets/{environment['sheet_asset_id']}/file" not in calls[-1]["image_urls"]
+
+
+def test_environment_prompts_preserve_explicitly_requested_furnishings():
+    from app.schemas import CanonSheet
+    sheet = CanonSheet(id="@cafe", kind="environment", label="Cafe", brief="Cafe with a wooden table and two chairs")
+    for prompt in (campaign._canon_anchor_prompt(sheet), campaign._canon_sheet_prompt(sheet, sheet.required_views(), anchored=True)):
+        assert "wooden table and two chairs" in prompt
+        assert "explicitly requested" in prompt
+        assert "no unrequested" in prompt.lower()
+        assert "requested empty background" not in prompt
+
+
 def test_failure_exposes_only_current_explicit_retry_question(monkeypatch):
     cid, tid = _filled('Actionable failure')
     from app import execution
