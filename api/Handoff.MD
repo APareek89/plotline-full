@@ -1,45 +1,43 @@
 # Plotline — current handoff
-last-synced: `23271b8`
+last-synced: `e739f78`
 
 ## State — 2026-10-01
 Live URL: https://plotline.3-6-183-210.sslip.io; ordinary authenticated live mode.
-Current deployed API source is23271b8; the real campaign reached DONE after API restart and natural approval, producing card ad_da8b0ea150.
-The web preview correction below is locally accepted; root web deployment and final runtime audit remain pending.
-The user's full paid-flow QA/deployment authorization supersedes historical local-only/single-call gates; root alone operates live providers, AWS, browser and publication.
-Do not read old environment files, modify other apps, replay providers automatically or commit without root review.
+Verified runtime images: API d5138f5e51f1; web f4b2c30ce828, both read-only roots with existing runtime controls preserved.
+The real image campaign reached DONE/card ad_da8b0ea150 after API restart, reload and natural “yes”; full-image previews are deployed and browser-verified.
+User authorization covers full paid-flow QA/deployment; root alone operates live providers, AWS, browser and publication.
+The QA account is signed out; the app is ready for the user's own account. No worker commits or provider replays.
 
 ## Shipped
-Photo + one-line prompt start; remaining business facts asked in chat; no count-based assumptions; optional brand and natural approvals/revisions preserve history.
-Owned-photo vision and signed references; Pillow installed directly; current failures expose Retry and failed job status; no silent mock success in live mode.
-Alias-correct OpenAI tool continuation; usage before parse; bounded rejection diagnostics; live retrieval excludes sample records and options honestly disclose evidence gaps.
-Input-bound board checkpoint; exact asset/QC approval restoration; server-enforced delivery gate; effective prompts preserve existing product marks.
-Owner-scoped canon identities prevent cross-product library overwrite; current-only UI actions, busy/error fences and working private bundle download remain.
-PixelBin reference inputs use official dotted-key JSON arrays; no-reference multipart remains; no encoding fallback or hidden retry.
-Detailed causes and earlier checkpoints are in Learning.MD and git history.
+Photo + one-line prompt start; missing business details asked in chat; no count-based assumptions; optional brand and natural approvals/revisions preserve history.
+Owned-photo vision and signed references; installed Pillow; explicit current Retry and failed-job status; no silent mock success in live mode.
+Alias-correct OpenAI tool continuation; usage before parse; bounded rejection diagnostics; live retrieval excludes sample records and discloses evidence gaps.
+Input-bound board checkpoint; exact asset/QC approval restoration; server delivery gate; effective prompts retain existing product marks.
+Owner-scoped canon identities preserve earlier library rows; current-only UI actions, busy/error fences and private Copy/Download controls remain.
+PixelBin reference requests use official dotted-key JSON arrays; no-reference multipart stays; no encoding fallback or hidden retry.
+Detailed causes and historical checkpoints are retained in Learning.MD and git history.
 
-## Environment repair — deployed, workflow exercised
-Live canon generated two sheets/four images, but its environment contained an unrequested branded bottle; the exact visual cause is unknown.
-The old environment anchor used generic subject wording without owned-photo context; the inspected schema default depicts a woman, not the bottle.
-Anchors now use owned-photo context while excluding the product, preserving requested scene features; explicit empty backgrounds get strict empty-scene instructions.
-A direct canon background correction renders one replacement anchor/sheet without replanning, retains old rows/assets/product identity, and rebinds only after success.
-Reload/keyframes use the new binding; failures preserve the previous one. Free questions retain CURRENT review actions without reviving earlier gates.
-Composed view metadata and cleared QC do not establish visual fidelity; the latest creative edit removed trousers/neck tag but retained shoes/bracelet.
+## Environment and visual review
+The first environment contained an unrequested branded bottle; its exact visual cause is unknown, and the inspected schema default is a woman, not that bottle.
+Environment anchors now use owned-photo context, exclude unrequested products/branding and retain explicitly requested scene features.
+Natural background correction renders only one new anchor/sheet, preserves prior rows/assets/product identity and changes current bindings only after success.
+Reload/keyframes use the corrected binding; failed correction preserves the prior one; informational questions cost nothing and retain current review actions.
+Five image surfaces use object-contain; root verified the whole keyframe after web reload, with existing video/grid sizing unchanged.
+QC clearance and composed-view metadata are not visual-fidelity guarantees: the creative edit removed trousers/neck tag but shoes/bracelet remained.
 
-## Full-image review previews — local acceptance
-The1024×1024 keyframe was cropped by a9:16 object-cover preview, hiding edge objects during review.
-Five image surfaces now use object-contain: keyframes, campaign creative/AdCard and legacy asset/post cards; video/grid sizing is unchanged.
-15 client tests, typecheck, isolated .next-preview-fit production build and compiled root-entry HTTP regression pass; no provider calls were made for this UI fix.
-
-## Evidence and pending gates
-Network-denied full native + isolated nonowner PostgreSQL suite:299 passed, four local ffmpeg skips; six new environment/review contracts included.
-Latest evidence: portfolio/_verify/plotline/environment-correction-final-tests.log; previous provider wire and actual-PG metering checks remain retained.
-Historical launch proved one real image reroll only; its mocked preparation did not prove this full real workflow.
-Current full-flow QA reached delivery with8 successful PixelBin operations and2 retained rejections; QC is cleared, with the visual limitations above retained explicitly.
-Authenticated ZIP verification passed27 HTTP checks: final PNG896×1152/1,605,678bytes, exact media/metadata hashes, attachment headers and foreign404 including logs; receipt: portfolio/_workstreams/plotline-flow-20261001/delivery-verification.json.
-The in-app browser download-event wait timed out; actual authenticated HTTP download is verified. Root next: confirm owner limit restored to6, deploy the preview fix and finish runtime audit; shared20 and all usage rows remain.
+## Completed evidence
+Full network-denied native + isolated nonowner PostgreSQL suite:299 passed, four existing local ffmpeg skips;15 client tests, typecheck, production build and compiled root-entry check pass.
+Historical launch covered one real reroll with mocked preparation; this newer acceptance exercised real text, canon, keyframe, one creative reroll, QC, restart/reload and delivery.
+Final audit:21 text attempts,20 successful plus one known HTTP rejection recorded at$0; aggregate text cost$0.06490920.
+Ten media attempts:8 successful renders/8 recorded PixelBin credits plus2 retained rejections with unknown credits; actual media USD remains unknown.
+Owner allowance restored to exact default6 after bounded QA; shared20 unchanged; all usage rows retained and no running jobs remain.
+Old business rows/usage and other apps are unchanged; private S3 exact versions and hashes verify.
+Authenticated delivery verification passed27 HTTP requests/checks: one reroll, final PNG896×1152/1,605,678bytes, matching ZIP media/metadata and correct ZIP attachment headers; foreign access404 including generation logs.
+The original IAB waitForEvent('download') timed out; the same Download bundle link subsequently completed via CUA downloadMedia({timeoutMs:15000}), alongside the verified HTTP ZIP bytes.
+Receipts: portfolio/_workstreams/plotline-flow-20261001/{final-usage,delivery-verification,web-preview-activation}.json; no video/audio full-flow QA claim.
 
 ## Runtime boundaries
 Auth.js credentials, revocable PG sessions/CSRF, signed Next BFF and private FastAPI revalidation;19 forced-RLS tables with DML-only runtime role.
-Owned private S3 exact-version/SHA assets; budgets text$1 owner/$5 shared, media default6 owner/20 shared; PixelBin credits retained and USD unknown.
+Owned private S3 exact-version/SHA assets; text budgets$1 owner/$5 shared, media default6 owner/20 shared; unknown media billing stays unknown.
 Default text OpenAI Responses gpt-5.4-mini; explicit Anthropic retained; no SDK retries; prepared campaigns permanently cached; no production fixture fallback.
-Loop.MD remains offered; no historical paid golden-set authorization. No worker provider calls, deployments or live limit changes.
+Loop.MD remains offered; historical paid golden-set scope is unchanged. No further paid work is required for this completed image-flow acceptance.
