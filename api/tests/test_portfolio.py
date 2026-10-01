@@ -52,16 +52,19 @@ def test_pg_forced_owner_rows_foreign_upserts_and_missing_actor(pg_env):
         cid = store.create_series({"name": "Private A"})
         tid = store.create_thread(cid)["id"]
         store.append_message(tid, "user", {"text": "private synthetic A"})
+        store.save_checkpoint(tid, "_board_output", {"input_sha256": "a" * 64, "board": {"fixture": "A"}})
     with execution_scope(b):
         assert store.get_profile() == {}
         assert store.get_series(cid) is None and store.get_thread(tid) is None
         assert store.get_messages(tid) == []
+        assert store.load_checkpoint(tid, "_board_output") is None
         with pytest.raises(Exception):
-            store.save_checkpoint(tid, "brief", {"foreign": True})
+            store.save_checkpoint(tid, "_board_output", {"foreign": True})
         store.save_profile({"niche": "owner-B"})
     with execution_scope(a):
         assert store.get_profile()["niche"] == "owner-A"
         assert len(store.get_messages(tid)) == 1
+        assert store.load_checkpoint(tid, "_board_output")["board"] == {"fixture": "A"}
     with pytest.raises(PermissionError):
         store.list_series()
     with database.connection() as conn:

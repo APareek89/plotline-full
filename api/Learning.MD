@@ -737,3 +737,10 @@ The added product-reference equality check initially prevented inappropriate reu
 ## 2026-10-01 — Sample provenance is separate from source tier
 
 The live devrag service labelled samples with sample_data=true, while the client rejected only tier=seed. Fixture rows marked official/research/curated therefore passed both retrieval and existence checks. Source tier describes a kind of evidence; it does not prove the record is real. Live search and resolution now reject sample markers, including the marker added to the bundled resolver. Mock/cached samples remain explicitly available; fixture identity cannot override live execution. Four new actual-service/mock-HTTP contracts prove zero live sample hits/citations and preserve real unmarked results. Full suite276 passes with four local ffmpeg skips. No corpus expansion or paid verification was performed by this workstream.
+
+
+## 2026-10-01 — Validate real-mode copy after a successful paid result
+
+A shot board was generated and billed successfully, then failed while constructing its display envelope: the live billing note contributed two sentence endings after a one-sentence heading. Mock wording had only one, so the whole mocked journey missed the live-only validation failure. The shared live note is now a single truthful sentence. The driver regression uses actual MOCK_MEDIA=false branches and injected, network-denied media fixtures through delivery, including a restart at QC. It verifies all four planned media operations without a paid call.
+
+A successful validated board now gets an owner-bound input-fingerprinted checkpoint before UI emission; only explicit Retry with identical inputs reuses it. Changed context invalidates reuse. Existing failed output is not automatically recovered from private logs. QC restart additionally restores exact accepted slot/asset pairs from its report, not merely a cleared label. Same-slot substituted assets remain unaccepted. Full native plus isolated PostgreSQL suite282 passes with four local ffmpeg skips. The remaining root-owned paid full-flow acceptance is separate.

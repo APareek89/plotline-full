@@ -4415,7 +4415,8 @@ def test_assume_result_preserves_explicit_claim_confirmation_gate(monkeypatch):
     assert saved["brand"]["claims_confirmed"] is False
 
 
-def test_photo_prompt_brand_revision_and_natural_approvals_reach_delivery(monkeypatch, tmp_path):
+@pytest.mark.parametrize("live_media_copy", [False, True])
+def test_photo_prompt_brand_revision_and_natural_approvals_reach_delivery(monkeypatch, tmp_path, live_media_copy):
     """User's reported words, real driver/store/validators, no typed command recipe."""
     from PIL import Image
     photo = tmp_path / 'tee.png'
@@ -4425,8 +4426,19 @@ def test_photo_prompt_brand_revision_and_natural_approvals_reach_delivery(monkey
     cid, tid = started['campaign_id'], started['thread']['id']
     calls = []
     original = campaign.generate
+    if live_media_copy:
+        monkeypatch.setattr(config, 'MOCK_MEDIA', False)
+        monkeypatch.setattr(campaign, '_seed_url', lambda aid, asset: f'/api/assets/{aid}/file')
+        assert campaign._sample_media() is False
     def capture(*args, **kwargs):
         calls.append((args, kwargs))
+        if live_media_copy:
+            from app import media
+            dest = config.ASSET_DIR / f'fixture_{len(calls)}.svg'
+            media._mock_image(args[1], kwargs.get('ratio', '1:1'), dest)
+            return {'path': str(dest), 'kind': 'image', 'model': 'fixture-only',
+                    'provider': 'fixture', 'cost': 0.0, 'consumed_credits': 1,
+                    'refs_used': kwargs.get('image_urls', []), 'dropped_refs': []}
         return original(*args, **kwargs)
     monkeypatch.setattr(campaign, 'generate', capture)
     campaign.handle_event(UserEvent(thread_id=tid, type='text',
@@ -4476,7 +4488,8 @@ def test_photo_prompt_brand_revision_and_natural_approvals_reach_delivery(monkey
     assert 'background lighter' in calls[-1][0][1]
     _text(tid, 'accept all')
     assert store.get_thread(tid)['stage'] == 'qc'
-    _text(tid, 'deliver it')
+    campaign._WORKSPACES.clear()  # QC and exact accepted asset IDs must survive reload.
+    _text(tid, 'yes')
     assert store.get_thread(tid)['stage'] == 'done'
     assert store.list_ad_cards(cid)
     assert len(calls) == 4, 'Anchor + sheet + keyframe + one explicit edit only'
@@ -4683,3 +4696,69 @@ def test_normal_intake_rejects_unsolicited_assumptions_but_allows_explicit_choic
     with pytest.raises(AgentValidationError, match='did not delegate'):
         campaign._validate_intake(guessed, current)
     assert campaign._validate_intake(guessed, current, allow_assumptions=True) == guessed
+
+
+@pytest.mark.parametrize("has_sources", [False, True])
+def test_options_headline_matches_actual_attached_sources(monkeypatch, has_sources):
+    if not has_sources:
+        monkeypatch.setattr(campaign.rag, "search_corpus", lambda *args, **kwargs: [])
+    _, tid = _ruminated("Evidence summary")
+    shown = next(e for e in reversed(_envelopes(tid))
+                 if any(a["type"] == "campaign_option" for a in e.get("artifacts", [])))
+    options = [a["payload"]["option"] for a in shown["artifacts"] if a["type"] == "campaign_option"]
+    supported = sum(any(e["source_id"] not in ("", "model") for e in o["evidence"]) for o in options)
+    assert bool(supported) is has_sources
+    assert "council-reviewed" in shown["text"]
+    expected = (f"supporting sources attached to {supported} of {len(options)} options"
+                if has_sources else "no supporting sources found")
+    assert expected in shown["text"]
+
+
+@pytest.mark.parametrize("changed_brief", [False, True])
+def test_board_emission_failure_retries_only_matching_persisted_output(monkeypatch, changed_brief):
+    cid, tid = _ruminated("Recover validated board")
+    real_say = campaign._say
+    real_agent = campaign.run_agent
+    calls=[]
+    def count_agent(**kwargs):
+        calls.append(kwargs['agent'])
+        return real_agent(**kwargs)
+    def fail_emission(thread_id, text, artifacts=None, **kwargs):
+        if any(a.type=='campaign_detail' for a in artifacts or []):
+            raise ValueError('synthetic envelope failure after successful board')
+        return real_say(thread_id,text,artifacts,**kwargs)
+    monkeypatch.setattr(campaign,'run_agent',count_agent)
+    monkeypatch.setattr(campaign,'_say',fail_emission)
+    _text(tid,'use the first one')
+    assert calls==['shot_board']
+    saved=store.load_checkpoint(tid,'_board_output')
+    assert saved and saved['board']
+    assert not _artifacts(tid,'campaign_detail')
+    # Output belongs to this thread; another thread never sees its checkpoint.
+    other=campaign.start_campaign('Other board')['thread']['id']
+    assert store.load_checkpoint(other,'_board_output') is None
+    monkeypatch.setattr(campaign,'_say',real_say)
+    campaign._WORKSPACES.clear()
+    ws=campaign._ws(tid);campaign._rehydrate(tid,ws)
+    if changed_brief:
+        ws['brief']={**ws['brief'],'single_message':'An explicitly changed brief'}
+    ws['resuming']=True
+    campaign._board_turn(tid,cid)
+    assert calls==['shot_board']*(2 if changed_brief else 1)
+    assert _artifacts(tid,'campaign_detail')
+    assert store.get_thread(tid)['stage']=='detail'
+
+
+def test_rehydrated_qc_does_not_accept_replaced_asset():
+    cid,tid=_ruminated('Exact accepted asset')
+    _act(tid,'o1','approve');_act(tid,'detail','generate_creative')
+    _act(tid,'confirm','generate_single');_act(tid,'creative','accept_all')
+    report=_artifacts(tid,'qc_report')[-1]
+    assert report['payload']['accepted_items']
+    for item in report['payload']['accepted_items']:
+        item['asset_id']='ast_unrelated'
+    campaign._say(tid,'QC result.',[campaign.ArtifactEnvelope.model_validate(report)])
+    campaign._WORKSPACES.clear()
+    _text(tid,'yes')
+    assert not store.list_ad_cards(cid)
+    assert not campaign._ws(tid)['accepted']

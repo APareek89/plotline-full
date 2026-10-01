@@ -236,6 +236,12 @@ def _rehydrate(thread_id: str, ws: dict[str, Any]) -> None:
                     ws["board"] = payload["board"]
             elif kind == "keyframe_board" and payload.get("board"):
                 ws["keyframes"] = payload["board"]
+            elif kind == "qc_report":
+                ws["qc"] = payload.get("report")
+                approved = {(i.get("slot"), i.get("asset_id"))
+                            for i in payload.get("accepted_items", []) if isinstance(i, dict)}
+                ws["accepted"] = {i["slot"] for i in ws["items"]
+                                  if (i["slot"], i.get("asset_id")) in approved}
             elif kind == "campaign_detail" and payload.get("detail"):
                 ws["detail"] = payload["detail"]
                 # The BOARD is the source of truth and `detail` is its
@@ -1514,7 +1520,12 @@ def _options_turn(campaign_id: str, thread_id: str, note: Optional[str] = None,
             return
 
         store.set_campaign_status(campaign_id, "planned")
-        head = f"{len(artifacts)} campaign options — council-reviewed, evidence attached"
+        supported = sum(any(e.get("source_id") not in (None, "", "model")
+                            for e in a.payload["option"].get("evidence", []))
+                        for a in artifacts)
+        evidence_summary = (f"supporting sources attached to {supported} of {len(artifacts)} options"
+                            if supported else "no supporting sources found")
+        head = f"{len(artifacts)} campaign options — council-reviewed; {evidence_summary}"
         if killed:
             head += f"; {len(killed)} withheld on kill flags"
         _say(thread_id, head[:270], artifacts,
@@ -2375,7 +2386,7 @@ def _sample_media() -> bool:
 
 def _media_billing_note() -> str:
     return ("Sample media; no provider call or charge." if _sample_media() else
-            "Media uses a limited operation allowance. Provider credits are recorded when returned; USD conversion is unverified.")
+            "Media uses a limited operation allowance; returned provider credits are recorded and USD conversion is unverified.")
 
 
 def _confirm_turn(thread_id: str, campaign_id: str) -> None:
@@ -3598,21 +3609,31 @@ def _board_turn(thread_id: str, campaign_id: str) -> None:
         brief = ws.get("brief") or {}
         style = ws.get("style_block") or neutral_style_block().model_dump(mode="json")
         ws["style_block"] = style
-        board, _log = run_agent(
-            agent="shot_board", prompt_name="shot_board", model=config.STAGE_MODELS["board"],
-            user_payload={"brief": brief, "option": _approved_option_json(ws),
-                          "hook_rack": ws.get("hook_rack"),
-                          "style_block_id": style.get("id"),
-                          "available_routes": sorted(config.MEDIA_MODELS),
-                          # The claims the board may use, verbatim. QA caught the
-                          # model inventing "proof_points:<slug>" ids because it
-                          # was never handed the strings themselves.
-                          "approved_claims": sorted(_confirmed_claims(
-                              _context_of(campaign_id)))},
-            schema=ShotBoard, dispatcher=None, use_tools=False,
-            prompt_replacements={"ref_slots": ref_slots_text()},
-            validate=lambda b: _validate_board(b, campaign_id, style),
-            mock_fn=campaign_mock.mock_shot_board)
+        payload = {"brief": brief, "option": _approved_option_json(ws),
+                   "hook_rack": ws.get("hook_rack"), "style_block_id": style.get("id"),
+                   "available_routes": sorted(config.MEDIA_MODELS),
+                   "approved_claims": sorted(_confirmed_claims(_context_of(campaign_id)))}
+        from app.agents.runner import build_system
+        replacements = {"ref_slots": ref_slots_text()}
+        system, _version = build_system("shot_board", replacements)
+        input_sha = hashlib.sha256(json.dumps({"payload": payload, "style": style,
+            "context": _context_of(campaign_id).model_dump(mode="json"),
+            "model": config.STAGE_MODELS["board"], "system": system},
+            sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        saved = store.load_checkpoint(thread_id, "_board_output") if ws.pop("resuming", False) else None
+        if saved and saved.get("input_sha256") == input_sha:
+            board = _validate_board(ShotBoard.model_validate(saved["board"]), campaign_id, style)
+        else:
+            board, _log = run_agent(
+                agent="shot_board", prompt_name="shot_board", model=config.STAGE_MODELS["board"],
+                user_payload=payload, schema=ShotBoard, dispatcher=None, use_tools=False,
+                prompt_replacements=replacements,
+                validate=lambda b: _validate_board(b, campaign_id, style),
+                mock_fn=campaign_mock.mock_shot_board)
+            # Keep a paid, validated result before constructing its UI envelope.
+            # Only explicit Retry with identical inputs can reuse this owner's output.
+            store.save_checkpoint(thread_id, "_board_output", {
+                "input_sha256": input_sha, "board": board.model_dump(mode="json")})
         ws["board"] = board.model_dump(mode="json")
         # The board is the SOURCE OF TRUTH; `detail` is its projection into the
         # shape the generate path already speaks. Projected, never authored
@@ -4008,7 +4029,9 @@ def _qc_turn(thread_id: str, campaign_id: str) -> None:
              [ArtifactEnvelope(
                  type="qc_report", id="qc",
                  title=f"QC · {report.verdict}",
-                 payload={"report": ws["qc"]},
+                 payload={"report": ws["qc"],
+                          "accepted_items": [{"slot": i["slot"], "asset_id": i["asset_id"]}
+                                             for i in ws["items"] if i["slot"] in ws["accepted"]]},
                  actions=_actions(("deliver", "Deliver", "primary"))
                          if report.verdict == "cleared" else [])],
              # A CLEARED report used to pass question=None, so `_options_from`
