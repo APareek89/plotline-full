@@ -3,6 +3,40 @@
 > corrective feedback, or something took real time to figure out. CHECK THIS FILE FIRST
 > before debugging — the answer may already be here.
 
+### 2026-10-01 — Paid transport uncertainty is not a free retry
+
+A dropped provider response may follow a billed generation. Automatic resubmission or
+provider failover can duplicate charges. The hosted adapters now reserve and mark every
+dispatch before sending, retain uncertain job/charge evidence, and require an explicit
+user retry after ambiguous completion. Known rejection can fail over only where no job
+was accepted; policy refusal is terminal. Validation retries remain separate metered
+requests, and existing completed-stage checkpoints remain reusable. Regression coverage
+replaces the obsolete dropped-stream retry expectation with one dispatch and retained logs.
+
+### 2026-10-01 — Native mock assume mode offered a Start that could not start
+
+**Symptom:** three real HTTP fragments (product, audience, then objective/platform)
+left the campaign block absent but displayed Start; Start returned “Not ready yet.”
+**Why 1:** `_assume_and_proceed` offered Start without checking the returned context.
+**Why 2:** the native mock ignored `assume_mode` and parsed only the current message,
+which is intentionally empty for that pass.
+**Why 3:** ordinary mock intake requires all campaign fields in one message.
+**Why 4:** existing fragmented-intake tests replaced the native mock with scripted
+completed contexts, so they did not exercise the deployed mock behavior.
+**Why 5 / deepest type:** `test-boundary-gap` — gate reachability was checked against
+an ideal parser rather than the real zero-cost parser used for demonstrations.
+**Action:** native assume mode reads only user transcript lines, preserves existing
+blocks and claim permissions, and labels defaults for missing required fields.
+The driver routes the result through the normal completeness/claims gate, with
+recursive assumption disabled for that response. A partial real or mock response
+asks an honest remaining question instead of offering a false Start.
+**Verification:** four focused regressions; the full Python suite (including rag)
+passes 208 with four existing skips. The original full HTTP image workflow passed
+124 assertions including delivery, all composer CTAs and matching image/ZIP bytes.
+No provider calls were made; external network denial and native mocks were active.
+**Prevention:** retain a native-parser fragmented conversation test and a partial
+structured-output gate test; scripted completed contexts alone are insufficient.
+
 ### 2026-08-21 — CCS band test failed on hand-picked ratings
 
 **Symptom:** test_status_bands asserted a rating combo lands between 70 and 85; it scored 87.
@@ -567,3 +601,89 @@ refine told to return a CampaignDetail while validated as CampaignOptions; Haiku
 unable to hold a byte-identical copy rule; the board never asked for refs; the
 provider silently snapping 2.5s beats to 4s. All four were invisible to 200
 passing tests and to six MOCK walks.
+
+
+## 2026-10-01 — Account state must expire before an asynchronous identity refresh
+
+**Symptom.** A second tab could change the shared session cookie while the first tab still accepted an old-account response during `/api/session` refresh.
+
+**Why-chain.**
+1. Storage notification started a refresh but did not immediately invalidate pending work.
+2. The old owner remained current until that network response finished.
+3. Body parsing and Blob downloads could outlast headers, so checking only HTTP arrival was insufficient.
+4. Browser drafts and queued uploads also belonged to the old owner.
+5. **Deepest why: design** — a cookie change was treated as a refresh hint instead of an immediate identity boundary.
+
+**Action.** The notice synchronously fences/aborts old work and hides the workspace, then refreshes identity. Requests retain the original generation through JSON/error/Blob parsing; queued uploads recheck it. Owner drafts never adopt legacy global values. Deterministic delayed-A-after-B, old401/current401 and cross-tab regressions pass.
+
+**Prevention.** Capture one account generation at the start of every asynchronous user operation, keep it through body consumption and subsequent writes, and test the old response arriving after the new account is active.
+
+## 2026-10-01 — An estimate inherited from another provider is not a price
+
+**Symptom.** The render gate displayed inherited dollar amounts and `1 credit = $0.10` even though PixelBin's USD conversion was not verified; temporary mock media also lacked clear Sample provenance.
+
+**Why-chain.**
+1. Old UI helpers converted stored fal-era constants into apparent spend and credit totals.
+2. The active media adapter could serve a different provider.
+3. Provider identity and billing units did not travel through every artifact schema.
+4. Missing/zero values were displayed as free instead of unknown.
+5. **Deepest why: design** — planning estimates, provider-returned credits and sample output were represented as one money field.
+
+**Action.** Backend-stamped sample/provider/billing metadata now accompanies artifacts. Sample displays zero provider cost. PixelBin or `usd_unverified` suppresses numeric USD; actual finite decimal credits are displayed only when returned. No conversion is inferred. Creative/canon/keyframe provider badges use recorded fields or explicit adapter prefixes, never an unprefixed model guess.
+
+**Prevention.** Carry amount, unit, source and verification status together. Cover unknown, sample, decimal-string credits and a provider switch in the display contract before presenting a number as money.
+
+## 2026-10-01 — A background failure needs a durable user recovery path
+
+**Symptom.** A missing import in new artifact metadata interrupted a mock campaign after a gate; an empty prepared campaign could also exist after initialization failed.
+
+**Why-chain.**
+1. The worker failed after state had been created.
+2. A process-local retry callback could disappear when the service restarted.
+3. The last visible question did not establish whether replay was safe.
+4. Automatic replay could charge again if a provider had already completed work.
+5. **Deepest why: design** — resumability needed a persisted, allowlisted operation descriptor and an explicit user decision, not only an error string.
+
+**Action.** Backend repair retains saved artifacts and canonical initialization, stores allowlisted primitive job arguments and revalidates current session/ownership before a retry. The conversation displays only the returned Retry control and the warning that prior provider work may have been charged. The frontend never triggers it automatically. Backend recovery tests cover workspace loss and zero-provider cached replay. Local compiled HTTP55 checks and live prepared HTTP61 checks subsequently passed.
+
+**Prevention.** Test a real worker failure followed by process-local state loss, verify the persisted recovery contract, and prove that merely reopening a thread cannot dispatch another provider request.
+
+
+## 2026-10-01 — Hosted owner boundaries and truthful media receipts
+- Problem: personal SQLite/canon names and file paths could not isolate public accounts; a global canon primary key collided across users.
+- Why: canon is reusable within a workspace, but the original workspace implicitly meant the whole process.
+- Fix: explicit actor scope, short owner-bound PostgreSQL transactions and forced RLS; composite owner/canon keys, retained owned canon assets and generation history after campaign deletion.
+- Evidence: actual non-owner PG tests reject foreign upserts/files, preserve A/B concurrent identities, reuse canon after deletion and deny runtime TRUNCATE.
+- Problem: a new sample artifact label used an unimported config symbol; preview example/brief serialization failed and an in-memory retry pointer disappeared after restart.
+- Why: the label was initially tested as a slice, while the complete conversation path and restart boundary had not yet rerun.
+- Fix: imported the explicit dependency, reran the whole suite, persisted only allowlisted job identifiers/bounded primitive args in owned checkpoints, and exposed explicit Retry with an uncertain-charge warning.
+- Evidence: a cached serializer failure followed by workspace loss and explicit retry reaches the brief with provider transport poisoned; no automatic replay.
+- Problem: legacy fal-derived USD/credit estimates were being presented as PixelBin charges and sample resolution.
+- Fix: provider-qualified planned/actual model metadata, Sample/no-charge labels, null unknown credits, actual returned credits retained, unverified conversion labelled without fabricated billing claims.
+- Regression guard: complete compiled auth/BFF and cached media/bundle journey accompany the unit and real-PG tests; original failure receipts are preserved outsidegit.
+
+
+## 2026-10-01 — Redirect an entry URL before an account gate reveals its page
+
+**Symptom.** Production sign-in from `/` succeeded at the HTTP/auth boundary but raised React error310 in Next AppRouter. Direct navigation to `/studio/campaign` with the same session worked. The failure receipt is retained in the private launch evidence as `root-live-root-signin-failure.json`.
+
+**Why-chain.**
+1. The root Server Component performed a redirect only when the account shell revealed its children.
+2. Successful sign-in also requested client navigation to the destination.
+3. The two entry transitions reached Next AppRouter while its redirect/navigation state changed during rendering.
+4. Local authentication checks had entered the destination directly, so they did not exercise the delayed root route.
+5. **Deepest why: design** — a fixed entry-URL redirect was implemented inside authenticated rendering rather than at the HTTP routing boundary.
+
+**Action.** Next configuration now returns a307 from `/` to `/studio/campaign` before the account layout renders. The existing destination, auth flow and page fallback remain intact. A fresh production build and isolated compiled-server test verify root, query-preserving and RSC requests redirect, while the destination serves200 without account/database/provider configuration. The corrected live browser gate subsequently passed: signed-out root307 to studio, existing Credentials sign-in, reload with authentication retained, and no fresh console warnings/errors.
+
+**Prevention.** Check both the public entry URL and direct workspace URL for sign-in, not only the destination route. Keep fixed URL redirects ahead of client account gates; retain real compiled HTTP regression coverage alongside browser acceptance.
+
+
+## 2026-10-01 — Distinguish saved artifacts from pending manual overrides
+
+The existing prompt-edit route changes the current worker's pending prompt map and logs the edit, but it does not persist that override as restartable pending state. Durable campaign/artifact records and explicit job recovery therefore do not guarantee a manual override survives an API restart. This launch documents the limitation: reapply an override after restart before generating. No persistence change or stronger durability claim is included in the release.
+
+
+## 2026-10-01 — Report the returned media units and dimensions
+
+The sole launch image reroll succeeded through PixelBin `nanoBanana_generate`, returned1 provider credit and stored an exact-version/SHA-verified PNG of896×1152 pixels (1,587,128 bytes). The request selected4:5, but those dimensions are not exactly4:5. USD conversion was unavailable; the ledger's `usage_unavailable` status records that missing monetary information, not a failed image. Acceptance therefore claims one working image reroll and the actual returned credit/dimensions, without a fabricated USD amount, ratio guarantee, live text/video or full-QC claim. Mocked preparation and the earlier browser failure receipts remain distinct evidence.

@@ -1,8 +1,10 @@
 // Thin client for plotline-api. All calls go to the local orchestrator;
 // the web app never talks to the RAG service or Anthropic directly.
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8600";
+import { session } from "./client/session";
+
+// API, uploads and private media share the authenticated Next origin.
+export const API_URL = "";
 
 export type Rating = "H" | "M" | "L";
 export type ElementName =
@@ -209,7 +211,10 @@ export interface Thread {
   kind: string;
   stage: string;
   series_name?: string;
+  cached?: boolean;
+  prepared?: boolean;
   working?: string | null;
+  recovery?: {event: "retry"; artifact_id: "recovery"; label: string; warning: string} | null;
   messages?: ThreadMessage[];
   concept_states?: ConceptState[];
 }
@@ -230,7 +235,10 @@ export interface GenerationLogEntry {
   prompt: string | null;
   model: string | null;
   seed: string | null;
-  cost: number; // USD — ad-card totals are credits (1 credit = $0.10)
+  cost: number; // Legacy planning estimate, not a verified provider invoice.
+  provider?: string | null;
+  consumed_credits?: number | null;
+  sample_media?: boolean;
   created_at: number;
 }
 
@@ -354,7 +362,9 @@ export interface AdCard {
   ratios: string[];
   naming: string;
   media: AdMedia[];
-  total_cost_credits: number;
+  total_cost_credits: number | null;
+  estimated_cost_usd?: number;
+  billing_status?: 'sample' | 'usd_unverified';
   status: "draft" | "ready" | "live";
   created_at: number;
 }
@@ -374,6 +384,8 @@ export interface SeatReview {
 }
 
 export interface CampaignSummary {
+  cached?: boolean;
+  thumbnail_asset_id?: string | null;
   id: string;
   name: string;
   objective: string;
@@ -408,30 +420,8 @@ export interface ClaimsExtract {
   banned_words: string[];
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-      cache: "no-store",
-    });
-  } catch (cause) {
-    // A network-level failure surfaces as the browser's "Failed to fetch",
-    // which tells the user nothing and looks like an app bug. In a locally
-    // hosted app the cause is almost always that the API is not running, so
-    // say that and say how to start it — an error message that does not lead
-    // anywhere is a dead end dressed as information.
-    throw new Error(
-      `Can't reach the API at ${API_URL}. Start it with "bash run.sh" in ` +
-        `plotline-api, then retry. (${cause instanceof Error ? cause.message : String(cause)})`,
-    );
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}: ${body.slice(0, 300)}`);
-  }
-  return res.json();
+export function req<T>(path: string, init?: RequestInit): Promise<T> {
+  return session.request<T>(`${API_URL}${path}`, init);
 }
 
 export type AgentRun = {
@@ -472,6 +462,7 @@ export type MediaRun = {
 };
 
 export type AssetMeta = {
+  provider?: string | null;
   id: string;
   kind: string;
   slot: string | null;
@@ -491,6 +482,10 @@ export type AssetMeta = {
 };
 
 export const api = {
+  examples: {
+    list: () => req<{ examples: { id: string; title: string; description: string; cached: boolean; prepared: boolean }[] }>("/api/examples"),
+    create: () => req<{ campaign_id: string; thread: Thread; cached: true }>("/api/examples", { method: "POST", body: JSON.stringify({ id: "ceramic-mugs" }) }),
+  },
   health: () => req<any>("/health"),
   // TEMPORARY debug surface — structured node input/output across ALL runs.
   // Dev-only server-side (MOCK_LLM or PLOTLINE_DEBUG_OBSERVABILITY).
@@ -515,7 +510,7 @@ export const api = {
     fileUrl: (id: string) => `${API_URL}/api/assets/${id}/file`,
   },
   threads: {
-    get: (id: string, afterSeq = 0) => req<Thread>(`/api/threads/${id}?after_seq=${afterSeq}`),
+    get: (id: string, afterSeq = 0, signal?: AbortSignal) => req<Thread>(`/api/threads/${id}?after_seq=${afterSeq}`, { signal }),
     // §05: both input paths normalize to a UserEvent; same handler server-side
     sendText: (id: string, text: string, panelFocus?: string | null, uploadIds: string[] = []) =>
       req(`/api/threads/${id}/events`, {
@@ -549,9 +544,7 @@ export const api = {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("kind", kind);
-      const res = await fetch(`${API_URL}/api/uploads`, { method: "POST", body: fd });
-      if (!res.ok) throw new Error(`upload failed: ${res.status}`);
-      return res.json() as Promise<{ id: string; filename: string; kind: string }>;
+      return req<{ id: string; filename: string; kind: string }>("/api/uploads", { method: "POST", body: fd });
     },
   },
   performance: {

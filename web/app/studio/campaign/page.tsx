@@ -1,4 +1,5 @@
 "use client";
+import { session } from "@/lib/client/session";
 
 // Campaign Studio — the create surface. Owner decision 2026-08-26: landing
 // here starts the journey by naming the campaign, full stop. There is no path
@@ -10,6 +11,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import PreparedExample from "@/components/prepared-example";
 import { CampaignSummary, api } from "@/lib/api";
 import {
   CampaignStyles,
@@ -53,7 +55,9 @@ function NameCampaign() {
     setBusy(true);
     setError(null);
     try {
+      const epoch = session.capture();
       const made = await api.campaigns.create(clean);
+      session.assert(epoch);
       router.push(`/studio/thread/${made.thread.id}?kind=campaign`);
     } catch (e) {
       setError(e instanceof MsApiError ? e.message : String(e));
@@ -62,7 +66,7 @@ function NameCampaign() {
   }, [name, busy, existing, router]);
 
   return (
-    <div className="ms-dark cb-screen flex h-[calc(100dvh-53.5px)] flex-col items-center justify-center px-6">
+    <div className="campaign-create ms-dark cb-screen flex h-[calc(100dvh-53.5px)] flex-col items-center justify-center px-6">
       <div className="w-[485px] max-w-full">
         <h1 className="text-[32px] font-bold leading-[1.15] tracking-[-0.02em]">
           What are we making?
@@ -71,7 +75,10 @@ function NameCampaign() {
           Give it a name. You&apos;ll tell me the rest in the thread.
         </p>
 
+        <label htmlFor="campaign-name" className="mt-6 block text-[13px]">Campaign name</label>
         <input
+          id="campaign-name"
+          maxLength={120}
           autoFocus
           value={name}
           onChange={(e) => {
@@ -82,7 +89,7 @@ function NameCampaign() {
           placeholder="Spring launch"
           aria-label="Campaign name"
           aria-invalid={!!problem}
-          className="cb-input mt-6 !h-[50px] !rounded-[12px] !text-[15px]"
+          className="cb-input mt-2 !h-[50px] !rounded-[12px] !text-[15px]"
         />
 
         {problem && (
@@ -107,6 +114,7 @@ function NameCampaign() {
             </Link>
           )}
         </div>
+        <PreparedExample />
       </div>
     </div>
   );

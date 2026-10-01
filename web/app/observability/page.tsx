@@ -1,4 +1,5 @@
 "use client";
+import { mediaCost } from "@/lib/client/media-pricing";
 
 /* TEMPORARY debug surface — its own tab, not attached to a thread.
  *
@@ -148,9 +149,9 @@ export default function ObservabilityPage() {
           ))}
           {lens === "media" && (
             <span className="mono ml-auto text-[11.5px] text-[var(--ms-text-2,#A9B3C4)]">
-              ${spend.total.toFixed(2)} total ·{" "}
+              {mediaCost(spend.total, {sample_media: Boolean(media?.length) && media!.every((m) => m.provider === "mock" || m.provider === "sample")})} total ·{" "}
               {Object.entries(spend.by)
-                .map(([p, v]) => `${p} ${v.renders}× $${v.usd.toFixed(2)}`)
+                .map(([p, v]) => `${p} ${v.renders}× ${mediaCost(v.usd, {provider:p})}`)
                 .join(" · ") || "nothing rendered yet"}
             </span>
           )}
@@ -179,7 +180,7 @@ export default function ObservabilityPage() {
                   </span>
                   <span className="mono ml-auto text-[11.5px] text-[var(--ms-text-2,#A9B3C4)]">
                     {m.campaign_name ? `${m.campaign_name} · ` : ""}
-                    {m.cost ? `$${Number(m.cost).toFixed(3)}` : "$0"}
+                    {mediaCost(m.cost, m)}
                   </span>
                 </div>
                 {m.prompt && (

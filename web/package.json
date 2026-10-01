@@ -15,16 +15,25 @@
     "dev:restart": "lsof -ti :3100 | xargs -r kill; sleep 1; next dev -p 3100"
   },
   "dependencies": {
-    "next": "^15.4.6",
+    "bcryptjs": "3.0.3",
+    "lucide-react": "0.468.0",
+    "next": "15.5.25",
+    "next-auth": "5.0.0-beta.32",
+    "pg": "8.16.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",
     "@types/node": "^24.0.0",
+    "@types/pg": "8.15.6",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.8.0"
+  },
+  "overrides": {
+    "postcss": "8.5.28",
+    "sharp": "0.35.4"
   }
 }

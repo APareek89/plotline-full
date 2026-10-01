@@ -1,119 +1,34 @@
 @import "tailwindcss";
+@import "./vendor/lovable-tokens.css";
+@import "./vendor/lovable-components.css";
+@import "./fonts.css";
 
-/* ── Plotline design tokens ─────────────────────────────────────────────
-   DS component grammar (nov-*): radii 12/16/20, block/tile patterns, chips,
-   dashed upload tiles, prompt-bar container r20 — with Plotline's own type
-   and palette. DS fonts/colors (Inter, #6933fa family) deliberately NOT used.
-   Plan surfaces light (Linear/Notion density); studio surfaces dark (Phase 2). */
-
-:root {
-  /* palette — "ink & cobalt" */
-  --paper: #faf9f6;
-  --card: #ffffff;
-  --ink: #16151a;
-  --ink-soft: #4c4854;
-  --muted: #77717f;
-  --line: #e7e4de;
-  --line-strong: #d5d1c8;
-  --accent: #2946e5;
-  --accent-deep: #1f38c7;
-  --accent-wash: #eef0fe;
-  --dark: #131217;
-  --dark-card: #1c1a22;
-  --dark-line: #2c2933;
-
-  /* evidence tags */
-  --ref: #0e7a5f;
-  --ref-wash: #e7f4ef;
-  --stat: #1e5fbf;
-  --stat-wash: #e9f1fc;
-  --trend: #b45309;
-  --trend-wash: #fbf0e1;
-  --principle: #8a8494;
-  --principle-wash: #f1eff4;
-
-  /* ratings + status */
-  --high: #0e7a5f;
-  --med: #b45309;
-  --low: #c2382e;
-  --low-wash: #fdecea;
-
-  /* radii — DS grammar */
-  --r-chip: 12px;
-  --r-card: 16px;
-  --r-modal: 20px;
-
-  --font-display: "Avenir Next", "Futura", "Segoe UI", sans-serif;
-  --font-body: "Avenir Next", -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
-}
-
-/* ── Marketing Studio tokens (v2 §THEME) ────────────────────────────────
-   Dark surface, blue accent, white text. Purely ADDITIVE: the :root block
-   above is untouched, so every Phase-1 light screen renders exactly as it
-   did. Nothing here paints anything until a page puts `.ms-dark` in the
-   document (see the .ms-dark section at the foot of this file).
-
-   Computed WCAG 2.1 contrast — text 18.91:1 on --ms-bg, 17.25:1 on
-   --ms-surface, 15.59:1 on --ms-elev; --ms-text-2 7.88:1 on --ms-surface;
-   #fff 5.36:1 on --ms-blue.
-
-   The derived tokens below exist because v2 gives ONE value to roles that
-   split on a dark surface: --ms-blue reads 3.22:1 as type and --ms-danger
-   3.95:1, so both are fill-only and get a lightened text twin. Same story
-   for borders — --ms-line is a divider (decorative), --ms-line-strong is the
-   3:1 boundary WCAG 1.4.11 wants around an actual control. */
-
-:root {
-  /* v2 palette — verbatim */
-  --ms-bg: #0E1116;
-  --ms-surface: #171B23;
-  --ms-elev: #1E242E;
-  --ms-line: #2A3140;
-  --ms-text: #FFFFFF;
-  --ms-text-2: #A6B0C0;
-  --ms-blue: #4353FF;
-  --ms-blue-hover: #5A6AFF;
-
-  /* ── BLUE AND WHITE ONLY (owner decision 2026-08-26) ──────────────────
-     Green, amber and red are gone as HUES. The status roles are kept as
-     tokens rather than deleted, because ~40 components ask for them by name
-     and re-pointing each one is how a stray green survives in a corner.
-
-     Status now reads by WEIGHT and CONTRAST instead of colour:
-       ok      → the blue accent, same as any other affirmative
-       warn    → plain secondary text; it is a note, not an alarm
-       danger  → INVERTED, white fill under dark type. Nothing else on a
-                 dark screen is a solid white block, so a blocking finding
-                 is still the loudest thing in the view — louder than red
-                 was, and it survives greyscale and colour-blindness, which
-                 the old red/green pair did not.
-     Honesty was never carried by hue: a QC row says "blocking" / "not run"
-     / "n/a" in words, and those words are the source of truth. */
-  --ms-ok: var(--ms-blue);
-  --ms-warn: var(--ms-text-2);
-  --ms-danger: #FFFFFF;
-
-  /* derived — role splits the palette doesn't cover (ratios vs --ms-surface) */
-  --ms-text-soft: #CBD3E0;      /* 11.44:1 — body tier between text and text-2 */
-  --ms-line-strong: #6B7589;    /*  3.72:1 — control borders (WCAG 1.4.11)     */
-  --ms-blue-text: #A3AEFF;      /*  8.26:1 — accent as TYPE, --ms-blue is fill */
-  --ms-blue-hover-solid: #3E4CE6; /* 6.21:1 under #fff — see the hover note    */
-  --ms-ok-text: var(--ms-blue-text);
-  --ms-danger-text: #FFFFFF;    /* 18.91:1 — danger as TYPE is simply loudest  */
-  --ms-focus: var(--ms-blue-text);
-
-  /* tinted fills — each composites to ≥5.6:1 under its own text token */
-  --ms-blue-wash: rgb(67 83 255 / 0.16);
-  --ms-ok-wash: var(--ms-blue-wash);
-  --ms-warn-wash: rgb(166 176 192 / 0.14);
-  /* the one inverted surface in the app — dark type goes ON this */
-  --ms-danger-wash: #FFFFFF;
-  --ms-neutral-wash: rgb(166 176 192 / 0.16);
-
-  --ms-scrim: rgb(0 0 0 / 0.55);
-  --ms-shadow: 0 16px 48px rgb(0 0 0 / 0.55);
-  --ms-r-pill: 999px;
+/* Existing semantic roles retain component behavior; values use the shared kit. */
+html.lovable-ui {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-sans); --font-display: var(--font-sans);
+  --font-mono: "Roboto Mono", ui-monospace, monospace;
+  --paper: var(--bg-base); --card: var(--bg-primary);
+  --ink: var(--fg-primary); --ink-soft: var(--fg-secondary); --muted: var(--fg-tertiary);
+  --line: var(--border-primary); --line-strong: var(--border-glow-on-surface-hover);
+  --accent: var(--fg-accent); --accent-deep: var(--fg-accent); --accent-wash: var(--bg-accent-translucent);
+  --dark: var(--bg-secondary); --dark-card: var(--bg-tertiary); --dark-line: var(--border-secondary);
+  --ref: var(--fg-positive); --ref-wash: var(--bg-positive-translucent);
+  --stat: var(--fg-accent); --stat-wash: var(--bg-accent-translucent);
+  --trend: var(--fg-attention); --trend-wash: var(--bg-attention-translucent);
+  --principle: var(--fg-secondary); --principle-wash: var(--bg-muted);
+  --high: var(--fg-positive); --med: var(--fg-attention); --low: var(--fg-destructive); --low-wash: var(--bg-destructive-translucent);
+  --r-chip: 12px; --r-card: 16px; --r-modal: 24px;
+  --ms-bg: var(--bg-primary); --ms-surface: var(--bg-secondary); --ms-elev: var(--bg-tertiary);
+  --ms-line: var(--border-primary); --ms-line-strong: var(--border-glow-on-surface-hover);
+  --ms-text: var(--fg-primary); --ms-text-2: var(--fg-tertiary); --ms-text-soft: var(--fg-secondary);
+  --ms-blue: var(--bg-accent); --ms-blue-text: var(--fg-accent);
+  --ms-blue-hover: var(--bg-accent); --ms-blue-hover-solid: var(--bg-accent);
+  --ms-blue-wash: var(--bg-accent-translucent); --ms-focus: var(--fg-accent);
+  --ms-ok: var(--fg-positive); --ms-ok-text: var(--fg-positive); --ms-ok-wash: var(--bg-positive-translucent);
+  --ms-warn: var(--fg-attention); --ms-warn-wash: var(--bg-attention-translucent);
+  --ms-danger: var(--fg-destructive); --ms-danger-text: var(--fg-destructive); --ms-danger-wash: var(--bg-destructive-translucent);
+  --ms-neutral-wash: var(--bg-muted); --ms-scrim: oklch(0% 0 0 / .5); --ms-shadow: var(--shadow-floating-md); --ms-r-pill: 999px;
 }
 
 @theme inline {
@@ -308,158 +223,91 @@ h1, h2, h3, .display {
   .anim-morph { animation: none; }
 }
 
-/* ── .ms-dark — the scoped dark surface (v2 §THEME) ──────────────────────
-   HOW SCOPING WORKS. A Marketing Studio screen wraps itself in `.ms-dark`
-   (or a route-group layout puts the class on <body>). Two selectors then
-   switch the theme on:
-
-     .ms-dark            — the wrapper and everything inside it
-     html:has(.ms-dark)  — the whole document *when* such a wrapper exists,
-                           which is what lets the shared <header> in
-                           layout.tsx go dark on MS routes without a client
-                           component or a pathname check
-
-   The switch is the token remap below. Because the @theme block above is
-   `inline`, every Tailwind colour utility compiles to `var(--paper)` /
-   `var(--line)` / … rather than a frozen hex — so re-declaring those aliases
-   here re-skins `.card`, `.chip`, `.input`, `.btn`, `bg-paper`, `text-muted`,
-   `border-line` and the rest in one move, with no rule duplication.
-
-   WHY IT CANNOT LEAK. Every selector in this section is gated on `.ms-dark`
-   being present in the document. A Phase-1 page never renders it, so `:root`
-   stays light and none of these rules match. Deleting the wrapper is the
-   whole rollback. */
-
-.ms-dark,
-html:has(.ms-dark) {
-  color-scheme: dark;
-
-  /* surfaces + type */
-  --paper: var(--ms-bg);
-  --card: var(--ms-surface);
-  --ink: var(--ms-text);
-  --ink-soft: var(--ms-text-soft);
-  --muted: var(--ms-text-2);
-  --line: var(--ms-line);
-  --line-strong: var(--ms-line-strong);
-
-  /* accent — the TEXT twin, because `--accent` is read by 15 `text-accent`
-     call sites and only 5 `bg-accent` ones; the solid-fill cases are bridged
-     at the foot of this file. */
-  --accent: var(--ms-blue-text);
-  --accent-deep: var(--ms-blue-text);
-  --accent-wash: var(--ms-blue-wash);
-
-  /* the light theme's inverted band is just another elevation here */
-  --dark: var(--ms-elev);
-  --dark-card: var(--ms-elev);
-  --dark-line: var(--ms-line);
-
-  /* evidence tags */
-  --ref: var(--ms-ok);
-  --ref-wash: var(--ms-ok-wash);
-  --stat: var(--ms-blue-text);
-  --stat-wash: var(--ms-blue-wash);
-  --trend: var(--ms-warn);
-  --trend-wash: var(--ms-warn-wash);
-  --principle: var(--ms-text-2);
-  --principle-wash: var(--ms-neutral-wash);
-
-  /* ratings + status */
-  --high: var(--ms-ok);
-  --med: var(--ms-warn);
-  --low: var(--ms-danger-text);
-  --low-wash: var(--ms-danger-wash);
-
-  /* Two Phase-1 status pills reach past the token system into Tailwind's raw
-     palette (`!text-amber-700` on the PROVISIONAL chip, `!border-emerald-600`
-     on Ready). Those compile to `var(--color-amber-700) !important`, so the
-     only override that beats them is the variable itself — an `!important`
-     rule of ours would lose, because unlayered important ranks BELOW the
-     utilities layer. Re-point the swatch and the chip reads on dark. */
-  --color-amber-500: var(--ms-warn);
-  --color-amber-700: var(--ms-warn);
-  --color-emerald-600: var(--ms-ok);
-  --color-emerald-700: var(--ms-ok);
-
-  scrollbar-color: var(--ms-line-strong) var(--ms-bg);
-  scrollbar-width: thin;
+/* Shared app controls. Existing renderer classes remain stable. */
+body { margin: 0; min-width: 0; }
+button, input, textarea, select { font-family: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+.lovable-ui :focus-visible { outline: 2px solid var(--fg-accent); outline-offset: 3px; }
+.lovable-ui :is(.btn,.cb-btn) { border-radius: 999px; font-weight: 480; min-height: 34px; }
+.lovable-ui .btn { color: var(--fg-primary); background: var(--bg-secondary); box-shadow: var(--shadow-button-neutral); }
+.lovable-ui :is(.btn-primary,.cb-btn-primary) { background: var(--bg-accent); color: var(--fg-emphasis); box-shadow: var(--shadow-button-accent); }
+.lovable-ui :is(.btn-primary,.cb-btn-primary):hover { background: var(--bg-accent); filter: brightness(.96); }
+.lovable-ui :is(.btn-ghost,.text-button) { box-shadow: none; background: transparent; }
+.lovable-ui :is(.input,.cb-input) { background: var(--bg-secondary); box-shadow: var(--shadow-input-base); }
+.lovable-ui :is(.input,.cb-input)::placeholder { color: var(--fg-tertiary); opacity: 1; }
+.lovable-ui .cb-danger-strip { color: var(--fg-destructive) !important; }
+.lovable-ui .cb-card[data-done="true"] { border-color: var(--border-positive); }
+.lovable-ui .cb-modal { max-width: calc(100vw - 32px); border-radius: 24px; }
+.lovable-ui .ms-dark { color: var(--fg-primary); background: var(--bg-primary); }
+.lovable-ui .bg-accent.text-white { background: var(--bg-accent); }
+.lovable-ui .bg-ink.text-white { background: var(--bg-inverse); color: var(--fg-inverse); }
+.lovable-ui .bg-ink\/20 { background: var(--ms-scrim); }
+.lovable-ui .chip { border-radius: 999px; }
+.lovable-ui .font-bold { font-weight: 600; }
+.portfolio-header { position: sticky; top: 0; z-index: 40; display:flex; align-items:center; gap:24px; min-height:64px; padding:12px 24px; border-bottom:var(--border-default) solid var(--border-primary); background:var(--bg-base); }
+.portfolio-brand { display:flex; gap:10px; align-items:center; text-decoration:none; font-size:18px; font-weight:600; white-space:nowrap; }
+.portfolio-brand svg { width:24px; height:24px; color:var(--fg-accent); }
+.portfolio-brand small { display:block; color:var(--fg-tertiary); font-size:10px; font-weight:400; letter-spacing:.08em; text-transform:uppercase; }
+.portfolio-header nav { display:flex; align-items:center; gap:4px; }
+.portfolio-header nav a { padding:8px 12px; border-radius:999px; white-space:nowrap; color:var(--fg-secondary); font-size:13px; }
+.portfolio-header nav a:hover, .portfolio-header nav a[aria-current=page] { background:var(--bg-muted); color:var(--fg-primary); }
+.portfolio-account { margin-left:auto; display:flex; align-items:center; gap:10px; }
+.account-email { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fg-tertiary); font-size:12px; }
+.btn svg { width:16px; height:16px; flex-shrink:0; }
+.lovable-ui .icon-btn { width:34px; padding:8px; flex-shrink:0; }
+.portfolio-content { min-width:0; }
+.auth-loading { display:grid; place-items:center; min-height:60vh; color:var(--fg-secondary); }
+.auth-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,400px); gap:64px; max-width:1050px; margin:0 auto; padding:clamp(40px,10vh,100px) 28px; align-items:center; }
+.auth-intro .eyebrow { font-size:12px; color:var(--fg-tertiary); }
+.auth-intro h1 { font-size:clamp(32px,4vw,46px); font-weight:480; line-height:1.12; margin:16px 0; letter-spacing:-.04em; }
+.auth-intro p { color:var(--fg-secondary); line-height:1.7; max-width:45ch; }
+.auth-note { margin-top:32px; display:flex; gap:12px; color:var(--fg-tertiary); font-size:13px; line-height:1.6; }
+.auth-note svg { width:20px; flex-shrink:0; }
+.auth-card { padding:28px; box-shadow:var(--shadow-surface-md); border:0; }
+.auth-card h2 { font-size:22px; font-weight:480; }
+.auth-card > p { margin-top:8px; color:var(--fg-tertiary); font-size:13px; line-height:1.6; }
+.auth-card form { display:grid; gap:8px; margin-top:24px; }
+.auth-card label { font-size:13px; margin-top:8px; }
+.auth-card input { height:44px; }
+.auth-card form > button { margin-top:16px; min-height:40px; }
+.auth-card .text-button { width:100%; margin-top:16px; font-size:12px; }
+.auth-hint { font-size:12px; color:var(--fg-tertiary); }
+.form-error { color:var(--fg-destructive); font-size:13px; line-height:1.5; }
+.prepared-example { margin-top:32px; padding:20px; border:1px solid var(--border-primary); border-radius:16px; background:var(--bg-secondary); }
+.prepared-example p { color:var(--fg-tertiary); font-size:13px; line-height:1.5; margin:10px 0 16px; }
+.prepared-badge { display:inline-flex; gap:6px; align-items:center; font-size:11px; color:var(--fg-secondary); background:var(--bg-muted); border-radius:999px; padding:4px 10px; }
+.thread-artifacts { background:var(--bg-base); }
+.thread-artifacts nav { overflow-x:auto; }
+.prepared-thread-note { padding:8px 16px; border-bottom:1px solid var(--border-primary); color:var(--fg-tertiary); font-size:12px; background:var(--bg-secondary); }
+.artifact-detail-shell { background:var(--bg-primary); }
+@media(max-width: 960px) {
+  .account-email { display:none; }
+  .portfolio-header { gap:12px; }
 }
-
-.ms-dark {
-  background: var(--ms-bg);
-  color: var(--ms-text);
+@media(max-width: 700px) {
+  .portfolio-header { padding:12px 16px; flex-wrap:wrap; }
+  .portfolio-header nav { order:3; width:100%; overflow-x:auto; }
+  .portfolio-header nav a { flex:1; text-align:center; padding:8px 10px; }
+  .portfolio-brand small { font-size:9px; }
+  .auth-layout { grid-template-columns:minmax(0,1fr); gap:28px; padding:36px 20px; }
+  .auth-intro h1 { font-size:32px; }
+  .auth-note { margin-top:20px; }
+  .auth-card { padding:24px; }
+  .campaign-create { min-height:calc(100dvh - 120px); height:auto !important; padding:36px 20px; justify-content:flex-start; }
+  .campaign-browse { padding:24px 16px; }
+  .campaign-browse > div:first-of-type { flex-wrap:wrap; gap:20px; }
+  .campaign-browse > div:first-of-type > label { width:100%; }
+  .campaign-toolbar { flex-wrap:wrap; gap:12px; }
+  .thread-shell { height:auto !important; min-height:calc(100dvh - 120px); flex-direction:column; overflow:visible; }
+  .thread-conversation { min-height:560px; height:72dvh; flex:none; border-right:0; border-bottom:1px solid var(--border-primary); }
+  .thread-artifacts { min-height:480px; height:70dvh; flex:none; }
+  .artifact-detail-shell { flex-direction:column; overflow-y:auto; }
+  .artifact-detail-shell > div { flex:none; min-height:35vh; }
+  .artifact-detail-shell > aside { width:100%; border-left:0; border-top:1px solid var(--border-primary); flex:none; overflow:visible; }
 }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; transition-duration:.01ms !important; } }
 
-/* ── component deltas ──
-   Only the cases where dark needs a different SHAPE, not just a different
-   value — everything else already fell out of the remap above. */
-
-/* chips and inputs sit one step up from the card they live on */
-:is(.ms-dark, html:has(.ms-dark)) .chip { background: var(--ms-elev); }
-:is(.ms-dark, html:has(.ms-dark)) .input { background: var(--ms-elev); }
-:is(.ms-dark, html:has(.ms-dark)) .upload-tile { background: transparent; }
-
-/* placeholders — --ms-text-2 at 0.8 over the --ms-elev field: 5.09:1 measured
-   (5.49:1 where a field sits directly on --ms-surface) */
-:is(.ms-dark, html:has(.ms-dark)) ::placeholder {
-  color: var(--ms-text-2);
-  opacity: 0.8;
-}
-
-/* primary actions are blue pills (v2 §THEME). The whole row goes pill so
-   Generate and its ghost neighbour don't disagree about their corners. */
-:is(.ms-dark, html:has(.ms-dark)) .btn { border-radius: var(--ms-r-pill); }
-:is(.ms-dark, html:has(.ms-dark)) .btn-primary {
-  background: var(--ms-blue);
-  color: var(--ms-text);
-  border-color: transparent;
-}
-/* #fff on --ms-blue is 5.36:1 but on --ms-blue-hover only 4.25:1, so the v2 hex
-   can't be the fill under white type. --ms-blue-hover stays in the token block
-   verbatim (it is the palette); white-on-blue hovers take the solid twin. */
-:is(.ms-dark, html:has(.ms-dark)) .btn-primary:hover { background: var(--ms-blue-hover-solid); }
-:is(.ms-dark, html:has(.ms-dark)) .btn-ghost { color: var(--ms-text-soft); }
-:is(.ms-dark, html:has(.ms-dark)) .btn-ghost:hover {
-  border-color: var(--ms-blue-text);
-  color: var(--ms-text);
-}
-/* honestly-disabled controls that must stay focusable to show a tooltip —
-   e.g. the prompt modal's Settings icon ("Model selection coming"). A real
-   `disabled` attribute would swallow the hover/focus the tooltip needs. */
-:is(.ms-dark, html:has(.ms-dark)) .btn[aria-disabled="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* focus — the offset is load-bearing, not decorative: it lands the ring on the
-   surface behind the control (9.06:1 on --ms-bg, 8.26:1 on --ms-surface,
-   7.47:1 on --ms-elev) instead of on a blue pill, where it would read 2.57:1
-   and miss the 3:1 WCAG 1.4.11 wants of a focus indicator. Fields keep offset
-   0 because their own border is the boundary. */
-:is(.ms-dark, html:has(.ms-dark)) :focus-visible {
-  outline: 2px solid var(--ms-focus);
-  outline-offset: 2px;
-}
-:is(.ms-dark, html:has(.ms-dark)) .input:focus-visible { outline-offset: 0; }
-
-/* scrollbars — thumb is --ms-line-strong at 4.08:1 on --ms-bg (WCAG 1.4.11) */
-:is(.ms-dark, html:has(.ms-dark)) ::-webkit-scrollbar { width: 10px; height: 10px; }
-:is(.ms-dark, html:has(.ms-dark)) ::-webkit-scrollbar-track { background: var(--ms-bg); }
-:is(.ms-dark, html:has(.ms-dark)) ::-webkit-scrollbar-thumb {
-  background: var(--ms-line-strong);
-  border: 2px solid var(--ms-bg);
-  border-radius: var(--ms-r-pill);
-  background-clip: padding-box;
-}
-:is(.ms-dark, html:has(.ms-dark)) ::-webkit-scrollbar-thumb:hover { background: var(--ms-text-2); }
-
-/* ── legacy-fill bridges ──
-   Three Phase-1 call sites bind a token that now means "type" to a SOLID
-   FILL: `bg-accent text-white` and `bg-ink text-white` (evidence.tsx badges)
-   and the `bg-ink/20` thread scrim. Left alone they'd render white on near-
-   white and a veil that lightens instead of dims. Corrected here rather than
-   by editing files this task doesn't own — fix at the source, delete this. */
-:is(.ms-dark, html:has(.ms-dark)) .bg-accent.text-white { background-color: var(--ms-blue); }  /* #fff 5.36:1 */
-:is(.ms-dark, html:has(.ms-dark)) .bg-ink { background-color: var(--ms-line-strong); }         /* #fff 4.63:1 */
-:is(.ms-dark, html:has(.ms-dark)) .bg-ink\/20 { background-color: var(--ms-scrim); }
+.auth-card .auth-google { width:100%; margin-top:16px; justify-content:space-between; }
+.auth-google span { font-size:11px; font-weight:400; }
+.provider-badge { display:inline-flex; padding:2px 6px; border-radius:6px; background:var(--bg-muted); color:var(--fg-secondary); font:400 10px/16px var(--font-body); vertical-align:middle; }

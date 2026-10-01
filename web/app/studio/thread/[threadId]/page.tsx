@@ -30,10 +30,11 @@ import {
   tabFor,
 } from "@/components/campaign-artifacts";
 import { CampaignStyles, PromptModal } from "@/components/campaign-blocks";
+import { useAccount } from "@/components/account-shell";
+import { ownerKey } from "@/lib/client/session";
 import { ArtifactDetail } from "@/components/artifact-detail";
 
 const POLL_MS = 1200;
-const KIND_PREFIX = "plotline.threadkind.";
 const PROMPT_HINT = "⌘↵ send · / focus · ↑ edits last message";
 const PLACEHOLDER = "Tell me what to change, or just answer above…";
 
@@ -41,6 +42,8 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const { threadId } = use(params);
   const search = useSearchParams();
   const router = useRouter();
+  const account = useAccount();
+  const owner = account.user?.id ?? "local-fixture";
 
   const [thread, setThread] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
@@ -48,6 +51,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Which tab the user is looking at, and whether the AGENT is still allowed to
   // move it. Touching a tab yourself takes the wheel — an auto-switch that
@@ -62,13 +66,14 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const stick = useRef(true);
 
-  const kindKey = `${KIND_PREFIX}${threadId}`;
+  const kindKey = ownerKey(owner, "threadkind", threadId);
+  const draftKey = ownerKey(owner, "draft", threadId);
   const [kindHint, setKindHint] = useState<string | null>(search.get("kind"));
   useEffect(() => {
-    setKindHint(search.get("kind") ?? localStorage.getItem(kindKey));
+    try { setKindHint(search.get("kind") ?? localStorage.getItem(kindKey)); } catch { setKindHint(search.get("kind")); }
   }, [kindKey, search]);
   useEffect(() => {
-    if (thread?.kind) localStorage.setItem(kindKey, thread.kind);
+    if (thread?.kind) { try { localStorage.setItem(kindKey, thread.kind); } catch {} }
   }, [kindKey, thread?.kind]);
 
   // Measured, not assumed: layout.tsx belongs to another lane and the Phase-1
@@ -85,41 +90,44 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     return () => window.removeEventListener("resize", measure);
   }, []);
 
+  const restoredDraft = useRef<string | null>(null);
   useEffect(() => {
-    setDraft(localStorage.getItem(`plotline.draft.${threadId}`) ?? "");
-  }, [threadId]);
-  useEffect(() => {
-    localStorage.setItem(`plotline.draft.${threadId}`, draft);
-  }, [draft, threadId]);
+    let value = ""; try { value = localStorage.getItem(draftKey) ?? ""; } catch {}
+    setDraft(value); restoredDraft.current = draftKey;
+  }, [draftKey]);
+  const changeDraft = (value: string) => {
+    setDraft(value);
+    if (restoredDraft.current === draftKey) { try { localStorage.setItem(draftKey, value); } catch {} }
+  };
 
-  // ---- polling ----
+  // Each poll belongs to this mounted thread; account changes also abort it centrally.
+  const lifetime = useRef<AbortController | null>(null);
+  const polling = useRef(false);
   const poll = useCallback(async () => {
+    const signal = lifetime.current?.signal;
+    if (!signal || signal.aborted || polling.current) return;
+    polling.current = true;
     try {
-      const t = await api.threads.get(threadId, lastSeq.current);
-      setOffline(false);
-      setThread((prev) => ({ ...t, messages: undefined }));
-      setWorking(t.working ?? null);
+      const t = await api.threads.get(threadId, lastSeq.current, signal);
+      if (signal.aborted) return;
+      setOffline(false); setError(null);
+      setThread({ ...t, messages: undefined }); setWorking(t.working ?? null);
       if (t.messages?.length) {
         setMessages((prev) => {
           const have = new Set(prev.map((p) => p.seq));
           const fresh = t.messages!.filter((m) => !have.has(m.seq));
           if (!fresh.length) return prev;
-          const merged = [...prev, ...fresh];
-          lastSeq.current = merged[merged.length - 1].seq;
-          return merged;
+          const merged = [...prev, ...fresh]; lastSeq.current = merged[merged.length - 1].seq; return merged;
         });
       }
-    } catch {
-      setOffline(true);
-    }
+    } catch (e) {
+      if (!signal.aborted && !(e instanceof Error && e.name === "AbortError")) { setOffline(true); setError(e instanceof Error ? e.message : "Thread is unavailable."); }
+    } finally { polling.current = false; }
   }, [threadId]);
-
   useEffect(() => {
-    lastSeq.current = 0;
-    setMessages([]);
-    poll();
-    const iv = setInterval(poll, POLL_MS);
-    return () => clearInterval(iv);
+    lifetime.current = new AbortController(); lastSeq.current = 0; setMessages([]);
+    void poll(); const iv = setInterval(() => void poll(), POLL_MS);
+    return () => { clearInterval(iv); lifetime.current?.abort(); };
   }, [poll]);
 
   // ---- artifacts, newest version of each id, bucketed by tab ----
@@ -182,13 +190,14 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     const text = draft.trim();
     if ((!text && !uploadIds.length) || busy || offline) return false;
     setBusy(true);
-    setDraft("");
+    changeDraft(""); setError(null);
     try {
       await api.threads.sendText(threadId, text, null, uploadIds);
       await poll();
       return true;
-    } catch {
-      setDraft(text);
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return false;
+      changeDraft(text); setError(e instanceof Error ? e.message : "Your message was not sent.");
       return false;
     } finally {
       setBusy(false);
@@ -198,14 +207,16 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   const sendAction = async (artifactId: string, event: string, values: string[] = []) => {
     if (busy || offline) return;
     if (event === "feedback") {
-      setDraft(`feedback ${artifactId} — `);
+      changeDraft(`feedback ${artifactId} — `);
       promptRef.current?.focus();
       return;
     }
     setBusy(true);
     try {
-      await api.threads.sendAction(threadId, artifactId, event, values);
+      setError(null); await api.threads.sendAction(threadId, artifactId, event, values);
       await poll();
+    } catch (e) {
+      if (e instanceof Error && e.name !== "AbortError") setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -231,7 +242,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     if (e.key === "ArrowUp" && !draft) {
       const lastUser = [...messages].reverse().find((m) => m.role === "user");
       const t = (lastUser?.envelope as any)?.text;
-      if (t) setDraft(t);
+      if (t) changeDraft(t);
     }
   };
 
@@ -242,7 +253,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
     return (
       <div ref={shell} className="flex items-center justify-center" style={fill} role="status">
         <p className="text-[13px] italic text-muted">
-          {offline ? "Can't reach the thread API — retrying…" : "Loading thread…"}
+          {offline ? error ?? "Thread is unavailable — retrying…" : "Loading thread…"}
         </p>
       </div>
     );
@@ -267,13 +278,13 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   return (
     <div
       ref={shell}
-      className="ms-dark flex overflow-hidden bg-[var(--ms-bg)] text-[var(--ms-text)]"
+      className="thread-shell ms-dark flex overflow-hidden bg-[var(--ms-bg)] text-[var(--ms-text)]"
       style={fill}
     >
       <CampaignStyles />
 
       {/* ══ LEFT — the conversation, and every CTA in it ══ */}
-      <section className="flex min-w-0 flex-1 flex-col border-r border-[var(--ms-line)]">
+      <section className="thread-conversation flex min-w-0 flex-1 flex-col border-r border-[var(--ms-line)]">
         <header className="flex h-[42px] shrink-0 items-center gap-2.5 border-b border-[var(--ms-line)] px-4">
           <span className="grid h-[17px] w-[17px] shrink-0 place-items-center rounded-full bg-[var(--ms-blue)]">
             <span className="h-[5px] w-[5px] rounded-full bg-white shadow-[4px_0_0_#fff]" />
@@ -284,6 +295,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
           </span>
         </header>
 
+        {(thread?.cached || thread?.prepared) && <div className="prepared-thread-note">Prepared sample · zero provider calls. Artifacts and follow-ups use fixture content.</div>}
         <div
           ref={scroller}
           onScroll={(e) => {
@@ -320,14 +332,25 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
         </div>
 
         <div className="shrink-0 px-4.5 pb-2.5">
+          {error && <p className="form-error mb-2" role="alert">{error}</p>}
           {offline && (
             <p className="mb-1.5 text-[12px] font-semibold text-[var(--ms-text)]">
               Connection lost — the thread is safe; reconnecting…
             </p>
           )}
 
+          {thread?.recovery && (
+            <div className="mb-3 rounded-xl border border-[var(--ms-line)] bg-[var(--ms-elev)] p-3">
+              <p className="mb-2 text-[12px] text-[var(--ms-text-2)]">{thread.recovery.warning}</p>
+              <button className="cb-btn cb-btn-primary" disabled={busy || offline || Boolean(working)}
+                onClick={() => thread.recovery && sendAction(thread.recovery.artifact_id, thread.recovery.event)}>
+                {busy ? "Retrying…" : thread.recovery.label}
+              </button>
+            </div>
+          )}
+
           {/* ---- the ask, directly above the composer ---- */}
-          {question && (
+          {question && !thread?.recovery && (
             <AskStrip
               question={question.q}
               picked={picked}
@@ -343,7 +366,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
             placeholder={PLACEHOLDER}
             note={PROMPT_HINT}
             value={draft}
-            onValue={setDraft}
+            onValue={changeDraft}
             onSend={(_text, uploadIds) => sendText(uploadIds)}
             onKeyDown={onPromptKey}
             inputRef={promptRef}
@@ -354,7 +377,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
       </section>
 
       {/* ══ RIGHT — read-only review, tabs the agent drives ══ */}
-      <section className="flex min-w-0 flex-1 flex-col bg-[#0B0E13]">
+      <section className="thread-artifacts flex min-w-0 flex-1 flex-col">
         <header className="flex h-[42px] shrink-0 items-center gap-2.5 border-b border-[var(--ms-line)] px-4">
           <span className="flex-1 truncate text-[14px] font-semibold">{name}</span>
           <button

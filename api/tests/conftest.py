@@ -13,6 +13,9 @@ REAL_HEALTH = RagClient.health
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
+    # Legacy deterministic workflow suite deliberately uses a local SQLite
+    # fixture. Hosted auth/PG contracts explicitly remove this flag.
+    monkeypatch.setenv("PLOTLINE_FIXTURE_MODE", "1")
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
     # LOG_DIR too, not just the database. Tests deliberately drive agents into
     # failure (bad_mock returns an invalid CampaignOptions to prove retries are

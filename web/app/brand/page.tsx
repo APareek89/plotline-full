@@ -14,9 +14,12 @@
 // and leaving the user to guess.
 
 import { useCallback, useEffect, useState } from "react";
-import { API_URL } from "@/lib/api";
+import ProviderBadge from "@/components/provider-badge";
+import { API_URL, req } from "@/lib/api";
 
 type CanonSheet = {
+  provider?: string | null;
+  model?: string | null;
   id: string;
   kind: "character" | "product" | "environment" | "voice";
   label: string;
@@ -47,9 +50,7 @@ export default function BrandPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/canon`);
-      if (!res.ok) throw new Error(`canon library unavailable (${res.status})`);
-      const data = await res.json();
+      const data = await req<{ sheets: CanonSheet[] }>("/api/canon");
       setSheets(data.sheets ?? []);
       setError(null);
     } catch (e) {
@@ -65,8 +66,10 @@ export default function BrandPage() {
   const remove = async (id: string) => {
     setBusy(id);
     try {
-      await fetch(`${API_URL}/api/canon/${id}`, { method: "DELETE" });
+      await req(`/api/canon/${id}`, { method: "DELETE" });
       await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not remove this item.");
     } finally {
       setBusy(null);
     }
@@ -157,6 +160,7 @@ export default function BrandPage() {
                               <span className="chip">v{s.version}</span>
                             </div>
                             <p className="mt-1 text-[12.5px] leading-snug">{s.brief}</p>
+                            <ProviderBadge provider={s.provider} model={s.model} />
 
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {s.kind !== "voice" && (

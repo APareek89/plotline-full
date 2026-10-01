@@ -1,5 +1,4 @@
-"""SQLite persistence — Phase-1 dev environment override (§7): no RDS, local
-processes only. Postgres+pgvector is the documented scale-up target."""
+"""Owner-scoped PostgreSQL; SQLite is only an explicit local test fixture."""
 from __future__ import annotations
 
 import json
@@ -7,15 +6,75 @@ import sqlite3
 import threading
 import time
 import uuid
+import hashlib
+import mimetypes
+from pathlib import Path
+from contextvars import ContextVar
 from typing import Any, Optional
 
 from app import config
+from app.execution import fixture_mode, require_execution, owner_directory, owned_file, local_preview
+from app.database import connection
 
-_lock = threading.Lock()
+_fixture_lock = threading.RLock()
+_transaction: ContextVar[Any] = ContextVar("plotline_store_transaction", default=None)
+_transaction_exit: ContextVar[Any] = ContextVar("plotline_store_exit", default=None)
 _conn: Optional[sqlite3.Connection] = None
 
 
+class _Postgres:
+    """Translate DB-API parameter markers only; ownership is enforced by RLS."""
+    def __init__(self, conn):
+        self.conn = conn
+
+    def execute(self, sql, params=()):
+        return self.conn.execute(sql.replace("?", "%s"), params)
+
+    def commit(self):
+        # The whole helper commits on scope exit. Never clear SET LOCAL early.
+        pass
+
+
+class _Scope:
+    def __enter__(self):
+        if fixture_mode():
+            return _fixture_lock.__enter__()
+        actor = require_execution()
+        if _transaction.get() is not None:
+            raise RuntimeError("Nested store transaction")
+        cm = connection(owner_id=actor.owner_id)
+        conn = cm.__enter__()
+        try:
+            # Serializes per-owner sequence assignment across API workers.
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (actor.owner_id,))
+        except BaseException:
+            import sys
+            cm.__exit__(*sys.exc_info())
+            raise
+        token = _transaction.set(_Postgres(conn))
+        _transaction_exit.set((cm, token))
+        return self
+
+    def __exit__(self, typ, value, tb):
+        if fixture_mode():
+            return _fixture_lock.__exit__(typ, value, tb)
+        cm, token = _transaction_exit.get()
+        try:
+            return cm.__exit__(typ, value, tb)
+        finally:
+            _transaction.reset(token)
+            _transaction_exit.set(None)
+
+
+_lock = _Scope()
+
+
 def get_conn() -> sqlite3.Connection:
+    if not fixture_mode():
+        require_execution()
+        if _transaction.get() is None:
+            raise RuntimeError("A scoped store transaction is required")
+        return _transaction.get()
     global _conn
     if _conn is None:
         _conn = sqlite3.connect(config.DB_PATH, check_same_thread=False)
@@ -228,6 +287,12 @@ def _init(conn: sqlite3.Connection) -> None:
     for col in ("variant_group_id", "variant_id"):
         if col not in ad_cols:
             conn.execute(f"ALTER TABLE ad_cards ADD COLUMN {col} TEXT")
+    series_cols = {r[1] for r in conn.execute("PRAGMA table_info(series)").fetchall()}
+    if "mode" not in series_cols:
+        conn.execute("ALTER TABLE series ADD COLUMN mode TEXT NOT NULL DEFAULT 'live'")
+    for table in ("assets", "uploads"):
+        if "storage_ref" not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN storage_ref TEXT")
     conn.commit()
 
 
@@ -250,7 +315,10 @@ def get_profile() -> dict[str, Any]:
 
 def save_profile(data: dict[str, Any]) -> None:
     with _lock:
-        get_conn().execute("UPDATE profile SET data = ? WHERE id = 1", (json.dumps(data),))
+        if fixture_mode():
+            get_conn().execute("UPDATE profile SET data = ? WHERE id = 1", (json.dumps(data),))
+        else:
+            get_conn().execute("INSERT INTO profile(id,data) VALUES(1,?) ON CONFLICT(owner_id,id) DO UPDATE SET data=excluded.data", (json.dumps(data),))
         get_conn().commit()
 
 
@@ -294,6 +362,7 @@ def get_series(series_id: str) -> Optional[dict[str, Any]]:
         "status": row["status"],
         "context": json.loads(row["context"]),
         "created_at": row["created_at"],
+        "mode": row["mode"],
     }
 
 
@@ -310,6 +379,7 @@ def list_series() -> list[dict[str, Any]]:
                 "status": row["status"],
                 "context": json.loads(row["context"]),
                 "created_at": row["created_at"],
+                "mode": row["mode"],
                 "concept_total": len(states),
                 "concept_approved": sum(1 for s in states if s["approved"]),
             }
@@ -323,11 +393,18 @@ def list_series() -> list[dict[str, Any]]:
 def save_canon_sheet(sheet: dict[str, Any], campaign_id: Optional[str] = None) -> None:
     """Upsert. A sheet keeps its original provenance on re-save — the second
     campaign to use it did not create it."""
+    if not fixture_mode():
+        if campaign_id and not get_series(campaign_id):
+            raise ValueError("Campaign not found")
+        asset_ids = list(sheet.get("asset_ids") or []) + [sheet.get(name) for name in ("sheet_asset_id", "anchor_asset_id") if sheet.get(name)]
+        if len(asset_ids) > 64 or any(not isinstance(value, str) or not get_asset(value) for value in asset_ids):
+            raise ValueError("Asset not found")
     now = _now()
+    conflict = "id" if fixture_mode() else "owner_id,id"
     with _lock:
         get_conn().execute(
             "INSERT INTO canon_sheets (id, kind, label, data, first_campaign_id, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+            f"VALUES (?,?,?,?,?,?,?) ON CONFLICT({conflict}) DO UPDATE SET "
             "kind=excluded.kind, label=excluded.label, data=excluded.data, updated_at=excluded.updated_at",
             (sheet["id"], sheet["kind"], sheet.get("label", sheet["id"]),
              json.dumps(sheet), campaign_id, now, now),
@@ -387,13 +464,27 @@ def delete_series(series_id: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     with _lock:
         conn = get_conn()
+        retained_assets = set()
+        for row in conn.execute("SELECT data FROM canon_sheets").fetchall():
+            sheet = json.loads(row["data"])
+            retained_assets.update(sheet.get("asset_ids") or [])
+            retained_assets.update(sheet.get(key) for key in ("sheet_asset_id", "anchor_asset_id") if sheet.get(key))
         threads = [r["id"] for r in conn.execute(
             "SELECT id FROM threads WHERE series_id = ?", (series_id,)).fetchall()]
         if threads:
             marks = ",".join("?" * len(threads))
             for table in _BY_THREAD:
+                if table in ("assets", "generation_log"):
+                    continue
                 cur = conn.execute(f"DELETE FROM {table} WHERE thread_id IN ({marks})", threads)
                 counts[table] = cur.rowcount
+            if retained_assets:
+                placeholders = ",".join("?" * len(retained_assets))
+                conn.execute(f"UPDATE assets SET thread_id=NULL WHERE thread_id IN ({marks}) AND id IN ({placeholders})", [*threads, *retained_assets])
+            counts["assets"] = conn.execute(f"DELETE FROM assets WHERE thread_id IN ({marks})", threads).rowcount
+            # Charges and generation receipts remain private to the owner even
+            # when a campaign is deleted; canon-referenced files stay reusable.
+            conn.execute(f"UPDATE generation_log SET thread_id=NULL WHERE thread_id IN ({marks})", threads)
         for table in _BY_SERIES:
             cur = conn.execute(f"DELETE FROM {table} WHERE series_id = ?", (series_id,))
             counts[table] = cur.rowcount
@@ -401,10 +492,18 @@ def delete_series(series_id: str) -> dict[str, int]:
             "DELETE FROM ad_cards WHERE campaign_id = ?", (series_id,)).rowcount
         counts["threads"] = conn.execute(
             "DELETE FROM threads WHERE series_id = ?", (series_id,)).rowcount
+        conn.execute("UPDATE uploads SET series_id=NULL WHERE series_id=?", (series_id,))
         counts["series"] = conn.execute(
             "DELETE FROM series WHERE id = ?", (series_id,)).rowcount
         conn.commit()
     return {k: v for k, v in counts.items() if v}
+
+
+def mark_cached_example(series_id: str) -> None:
+    """Trusted factory only; no generic request field can change this column."""
+    with _lock:
+        get_conn().execute("UPDATE series SET mode='cached' WHERE id=?", (series_id,))
+        get_conn().commit()
 
 
 # ------------------------------------------------- run checkpoints (v3) --
@@ -440,7 +539,7 @@ def clear_checkpoints(thread_id: str) -> None:
     stale by definition — resuming into it would silently serve the user the
     campaign they already rejected."""
     with _lock:
-        get_conn().execute("DELETE FROM run_checkpoints WHERE thread_id = ?", (thread_id,))
+        get_conn().execute("DELETE FROM run_checkpoints WHERE thread_id = ? AND stage != '_last_job'", (thread_id,))
         get_conn().commit()
 
 
@@ -487,7 +586,7 @@ def save_plan(series_id: str, plan: dict, feedback: dict, options: dict) -> None
             """INSERT INTO series_plan (series_id, version, plan, feedback, options, updated_at)
                VALUES (?, 1, ?, ?, ?, ?)
                ON CONFLICT(series_id) DO UPDATE SET
-                 version = version + 1, plan = excluded.plan, feedback = excluded.feedback,
+                 version = series_plan.version + 1, plan = excluded.plan, feedback = excluded.feedback,
                  options = excluded.options, updated_at = excluded.updated_at""",
             (series_id, json.dumps(plan), json.dumps(feedback), json.dumps(options), _now()),
         )
@@ -726,11 +825,14 @@ def set_production_status(series_id: str, concept_id: str, status: str) -> None:
 
 def add_asset(thread_id: Optional[str], slot: str, kind: str, path: str,
               params: dict[str, Any], cost: float, status: str = "ready") -> str:
+    if not fixture_mode() and thread_id and not get_thread(thread_id):
+        raise ValueError("Thread not found")
     asset_id = new_id("ast")
+    ref = _persist_file(asset_id, path, "assets", mimetypes.guess_type(path)[0] or "application/octet-stream")
     with _lock:
         get_conn().execute(
-            "INSERT INTO assets (id, thread_id, slot, kind, path, params, status, cost, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-            (asset_id, thread_id, slot, kind, path, json.dumps(params, default=str), status, cost, _now()),
+            "INSERT INTO assets (id, thread_id, slot, kind, path, params, status, cost, created_at,storage_ref) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (asset_id, thread_id, slot, kind, path, json.dumps(params, default=str), status, cost, _now(), json.dumps(ref) if ref else None),
         )
         get_conn().commit()
     return asset_id
@@ -791,6 +893,11 @@ def list_assets(thread_id: Optional[str] = None) -> list[dict[str, Any]]:
 def log_generation(thread_id: Optional[str], asset_id: Optional[str], event: str,
                    prompt: Optional[str] = None, model: Optional[str] = None,
                    seed: Optional[str] = None, cost: float = 0) -> None:
+    if not fixture_mode():
+        if thread_id and not get_thread(thread_id):
+            raise ValueError("Thread not found")
+        if asset_id and not get_asset(asset_id):
+            raise ValueError("Asset not found")
     with _lock:
         get_conn().execute(
             "INSERT INTO generation_log (id, thread_id, asset_id, event, prompt, model, seed, cost, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -914,6 +1021,12 @@ def finish_run(run_id: str, status: str, error: Optional[str] = None) -> None:
         get_conn().commit()
 
 
+def last_job_status(thread_id: str) -> Optional[dict[str, Any]]:
+    with _lock:
+        row = get_conn().execute("SELECT status,created_at,finished_at FROM pipeline_runs WHERE kind=? ORDER BY created_at DESC LIMIT 1", ("job:" + thread_id,)).fetchone()
+    return dict(row) if row else None
+
+
 # ------------------------------------------------------------- performance --
 
 
@@ -941,11 +1054,14 @@ def list_performance() -> list[dict[str, Any]]:
 
 
 def add_upload(filename: str, kind: str, path: str, content_type: Optional[str], series_id: Optional[str]) -> str:
+    if not fixture_mode() and series_id and not get_series(series_id):
+        raise ValueError("Campaign not found")
     upload_id = new_id("upl")
+    ref = _persist_file(upload_id, path, "uploads", content_type or "application/octet-stream")
     with _lock:
         get_conn().execute(
-            "INSERT INTO uploads (id, filename, kind, path, content_type, series_id, created_at) VALUES (?,?,?,?,?,?,?)",
-            (upload_id, filename, kind, path, content_type, series_id, _now()),
+            "INSERT INTO uploads (id, filename, kind, path, content_type, series_id, created_at,storage_ref) VALUES (?,?,?,?,?,?,?,?)",
+            (upload_id, filename, kind, path, content_type, series_id, _now(), json.dumps(ref) if ref else None),
         )
         get_conn().commit()
     return upload_id
@@ -964,3 +1080,71 @@ def list_uploads() -> list[dict[str, Any]]:
     with _lock:
         rows = get_conn().execute("SELECT * FROM uploads ORDER BY created_at DESC").fetchall()
     return [dict(r) for r in rows]
+
+
+def _persist_file(identifier: str, path: str, directory: str, content_type: str):
+    if fixture_mode():
+        return None
+    from app.media_storage import persist_asset
+    actor = require_execution()
+    source = owned_file(path, directory)
+    size = source.stat().st_size
+    if not 0 < size <= 64 * 1024 * 1024:
+        raise ValueError("File exceeds storage limit")
+    ticket = str(uuid.uuid4())
+    # Reserve before the first S3 write. Pending/failed tickets remain counted:
+    # an ambiguous PUT may have produced a durable version even without a reply.
+    with connection(owner_id=actor.owner_id) as conn:
+        shared = conn.execute("SELECT bytes FROM shared_storage WHERE id=1 FOR UPDATE").fetchone()
+        own = conn.execute("SELECT coalesce(sum(bytes),0) AS bytes,count(*) AS n FROM storage_reservations WHERE owner_id=%s", (actor.owner_id,)).fetchone()
+        if own["bytes"] + size > 512 * 1024 * 1024 or own["n"] >= 1000 or shared["bytes"] + size > 2 * 1024 * 1024 * 1024:
+            raise ValueError("Private storage capacity reached")
+        conn.execute("INSERT INTO storage_reservations(id,owner_id,bytes,status) VALUES(%s,%s,%s,'pending')", (ticket, actor.owner_id, size))
+        conn.execute("UPDATE shared_storage SET bytes=bytes+%s WHERE id=1", (size,))
+    try:
+        ref = persist_asset(actor.owner_id, identifier, source, content_type, kind=directory)
+        with connection(owner_id=actor.owner_id) as conn:
+            conn.execute("UPDATE storage_reservations SET status='complete',storage_ref=%s WHERE id=%s AND owner_id=%s", (json.dumps(ref), ticket, actor.owner_id))
+        return ref
+    except BaseException:
+        with connection(owner_id=actor.owner_id) as conn:
+            conn.execute("UPDATE storage_reservations SET status='failed' WHERE id=%s AND owner_id=%s", (ticket, actor.owner_id))
+        raise
+
+
+def file_path(row: dict, directory: str) -> Path:
+    """Owner-scoped row only; hydrate exactly the recorded S3 version/hash."""
+    if fixture_mode():
+        return Path(row["path"])
+    from app.media_storage import hydrate_asset
+    actor = require_execution()
+    if str(row.get("owner_id")) != actor.owner_id:
+        raise PermissionError("Foreign file")
+    target = Path(row["path"])
+    root = owner_directory(directory)
+    if target.is_symlink() or root not in target.resolve().parents:
+        raise PermissionError("Invalid private file path")
+    ref = json.loads(row["storage_ref"]) if row.get("storage_ref") else None
+    if ref:
+        if target.is_file() and target.stat().st_size == ref["bytes"] and hashlib.sha256(target.read_bytes()).hexdigest() == ref["sha256"]:
+            return owned_file(target, directory)
+        return hydrate_asset(actor.owner_id, ref, target)
+    # No silent hosted downgrade to unverified local bytes.
+    if getattr(config, "HOSTED", False) and not local_preview():
+        raise FileNotFoundError("Durable file reference unavailable")
+    return owned_file(target, directory)
+
+
+def campaign_media_credits(series_id: str):
+    """Provider-reported credits only; mixed or missing units stay unknown."""
+    if not get_series(series_id):
+        raise ValueError("Campaign not found")
+    if fixture_mode():
+        return 0.0 if config.MOCK_MEDIA else None
+    actor=require_execution()
+    with connection(owner_id=actor.owner_id) as conn:
+        row=conn.execute("""SELECT count(*) AS operations,count(consumed_credits) AS known,
+            count(DISTINCT provider) AS providers,sum(consumed_credits) AS credits FROM usage
+            WHERE owner_id=%s AND campaign_id=%s AND kind='media' AND status!='released'""",(actor.owner_id,series_id)).fetchone()
+    if not row["operations"]:return 0.0
+    return float(row["credits"]) if row["known"]==row["operations"] and row["providers"]==1 else None

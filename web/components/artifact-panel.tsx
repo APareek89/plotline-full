@@ -1,4 +1,5 @@
 "use client";
+import { mediaCost } from "@/lib/client/media-pricing";
 
 // Addendum-01 §02: right detail panel — one at a time, Concept/Activity tabs,
 // metadata rows, expand → full plan board, deep-linkable.
@@ -154,7 +155,7 @@ export function ArtifactPanel({
 
   const ctx = campaign?.context;
   const spend = (campaign?.ad_cards ?? []).reduce(
-    (s, c) => s + Number(c.total_cost_credits ?? 0),
+    (s, c) => s + Number(c.estimated_cost_usd ?? 0),
     0
   );
 
@@ -345,7 +346,7 @@ export function ArtifactPanel({
                   <p className={`mono mt-0.5 text-[10.5px] ${softText}`}>
                     {g.model ?? "model not recorded"}
                     {g.seed && g.seed !== "None" ? ` · seed ${g.seed}` : ""}
-                    {` · $${Number(g.cost ?? 0).toFixed(2)}`}
+                    {` · ${mediaCost(g.cost, g)}`}
                     {g.asset_id ? ` · ${g.asset_id}` : ""}
                   </p>
                   {g.prompt && (
@@ -423,7 +424,7 @@ export function ArtifactPanel({
               />
               <MetaRow dark label="Creative type" value={ctx?.campaign?.creative_type ?? "—"} />
               <MetaRow dark label="Ad Cards" value={String((campaign?.ad_cards ?? []).length)} />
-              <MetaRow dark label="Spend to date" value={`${spend} credits`} />
+              <MetaRow dark label="Media estimate" value={mediaCost(spend, { sample_media: Boolean(campaign?.ad_cards?.length) && campaign!.ad_cards.every((c) => c.billing_status === "sample") })} />
               <MetaRow
                 dark
                 label="Approved claims"

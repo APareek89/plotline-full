@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import time
 from typing import Any, Optional
 
@@ -38,8 +39,9 @@ class PixelbinError(RuntimeError):
     """Transport or provider failure. `policy=True` → the model declined the
     prompt, which must never be retried against the same provider."""
 
-    def __init__(self, message: str, policy: bool = False):
+    def __init__(self, message: str, policy: bool = False, safe_to_fallback: bool = False):
         self.policy = policy
+        self.safe_to_fallback = safe_to_fallback
         super().__init__(message)
 
 
@@ -69,7 +71,7 @@ def _headers() -> dict[str, str]:
     if not configured():
         raise PixelbinError(
             "PIXELBIN_API_TOKEN is not set — PixelBin generation unavailable "
-            "(set MOCK_MEDIA=1 to develop without it, or PLOTLINE_MEDIA_PROVIDER=fal)"
+            "(set MOCK_MEDIA=1 to develop without it, or PLOTLINE_MEDIA_PROVIDER=fal)", safe_to_fallback=True
         )
     encoded = base64.b64encode(config.PIXELBIN_API_TOKEN.strip().encode()).decode()
     return {"Authorization": f"Bearer {encoded}"}
@@ -101,73 +103,36 @@ def _as_form(payload: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 def submit_and_wait(name: str, payload: dict[str, Any], timeout_s: float = 600) -> list[str]:
-    """Create a prediction and poll to a terminal state. Returns output URLs.
-
-    One bounded retry on transport/5xx, mirroring the fal client. A 4xx is a
-    real answer from the server — never retried, because spinning on a rejected
-    prompt burns wall-clock and tells the user nothing.
-    """
+    """One submit, fixed authenticated polling, bounded response, no hidden retry."""
+    from app import media_transport as transport
     plugin, operation = split_name(name)
-    url = f"{config.PIXELBIN_DOMAIN}{_PREDICT}/{plugin}/{operation}"
-    last: Optional[Exception] = None
-
-    for attempt in range(2):
-        try:
-            sub = httpx.post(url, headers=_headers(), files=[
-                (k, (None, v)) for k, v in _as_form(payload)
-            ], timeout=60)
-            if sub.status_code in (400, 422):
-                raise PixelbinError(f"{name} rejected the request: {sub.text[:300]}", policy=True)
-            if sub.status_code in (401, 403):
-                # Credentials are a real answer, not a blip. Retrying spends
-                # wall-clock to be told the same thing, and the message has to
-                # name the likely cause or the next person re-derives it.
-                raise PixelbinError(
-                    f"{name} rejected the credentials ({sub.status_code}). The platform API "
-                    "wants Bearer base64(PIXELBIN_API_TOKEN); check the token is current."
-                )
-            if sub.status_code in (402, 429):
-                # quota and rate-limit are real answers; falling back to the
-                # other provider is the right move, retrying here is not.
-                raise PixelbinError(f"{name} refused: {sub.text[:200]}")
-            sub.raise_for_status()
-            job = sub.json()
-            request_id = job.get("_id") or job.get("requestId") or job.get("id")
-            if not request_id:
-                raise PixelbinError(f"{name} returned no request id: {json.dumps(job)[:200]}")
-
-            started = time.time()
-            while time.time() - started < timeout_s:
-                st = httpx.get(
-                    f"{config.PIXELBIN_DOMAIN}{_PREDICT}/{request_id}",
-                    headers=_headers(), timeout=30,
-                ).json()
-                status = str(st.get("status", "")).upper()
-                if status == "SUCCESS":
-                    out = st.get("output") or []
-                    if isinstance(out, str):
-                        out = [out]
-                    urls = [u for u in out if isinstance(u, str) and u.startswith("http")]
-                    if not urls:
-                        raise PixelbinError(f"{name} succeeded with no output: {json.dumps(st)[:200]}")
-                    return urls
-                if status in ("FAILURE", "FAILED", "ERROR", "CANCELLED"):
-                    detail = json.dumps(st)[:300]
-                    low = detail.lower()
-                    policy = any(w in low for w in ("content", "policy", "safety", "moderat"))
-                    raise PixelbinError(f"{name} failed: {detail}", policy=policy)
-                time.sleep(3)
-            raise PixelbinError(f"{name} timed out after {timeout_s}s")
-
-        except PixelbinError:
-            raise
-        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-            last = exc
-            logger.warning("pixelbin %s attempt %d failed (%s) — %s",
-                           name, attempt + 1, type(exc).__name__, exc)
-            if attempt == 0:
-                time.sleep(1.5)
-    raise PixelbinError(f"{name} unreachable after retry: {last}")
+    if not re.fullmatch(r"[A-Za-z0-9]+",plugin) or not re.fullmatch(r"[A-Za-z0-9_]+",operation) or config.PIXELBIN_DOMAIN!="https://api.pixelbin.io":
+        raise PixelbinError("invalid PixelBin endpoint")
+    headers=_headers();transport.before_submit(payload)
+    try:
+        sub=transport.request("POST",f"https://api.pixelbin.io{_PREDICT}/{plugin}/{operation}",headers=headers,
+                              files=[(k,(None,v)) for k,v in _as_form(payload)],timeout=60)
+        if sub.status_code in (400,401,402,403,404,422,429):
+            transport.rejected()
+            raise PixelbinError("PixelBin rejected the request",policy=transport.is_policy(sub),
+                                safe_to_fallback=sub.status_code in (401,402,403,404,429))
+        sub.raise_for_status();job=sub.json();request_id=job.get('_id') or job.get('requestId') or job.get('id')
+        transport.accepted(request_id);deadline=time.monotonic()+min(timeout_s,900)
+        while time.monotonic()<deadline:
+            st=transport.request('GET',f'https://api.pixelbin.io{_PREDICT}/{request_id}',headers=headers);st.raise_for_status()
+            data=st.json();status=str(data.get('status','')).upper()
+            if status=='SUCCESS':
+                output=data.get('output') or [];output=[output] if isinstance(output,str) else output
+                urls=[u for u in output if isinstance(u,str) and u.startswith('https://')]
+                transport.completed(data.get("consumedCredits"))
+                if not urls:raise PixelbinError('PixelBin succeeded without an output URL')
+                return urls
+            if status in ('FAILURE','FAILED','ERROR','CANCELLED'):
+                raise PixelbinError('PixelBin job failed; charge status retained',policy=transport.is_policy(st))
+            time.sleep(3)
+        raise PixelbinError('PixelBin job timed out; it may still complete and be charged')
+    except PixelbinError:raise
+    except Exception:raise PixelbinError('PixelBin completion unknown; it may have been charged') from None
 
 
 # Per-model capability table, read from the LIVE schema endpoint on 2026-08-26:
@@ -300,7 +265,6 @@ def generate(
         payload[caps["image_field"]] = refs
 
     urls = submit_and_wait(model, payload, timeout_s=timeout)
-    logger.info("pixelbin %s via %s (%s)", kind, model,
-                ", ".join(f"{k}={v}" for k, v in payload.items() if k != "prompt"))
-    return {"url": urls[0], "model": f"pixelbin:{model}",
-            "params": {k: v for k, v in payload.items() if k != "prompt"}}
+    safe_params = {k:v for k,v in payload.items() if k in ("aspect_ratio","output_resolution","resolution","duration")}
+    logger.info("pixelbin %s via %s, reference_count=%d", kind, model, len(refs))
+    return {"url": urls[0], "model": f"pixelbin:{model}", "params": safe_params}

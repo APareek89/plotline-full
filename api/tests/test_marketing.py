@@ -555,7 +555,7 @@ def test_model_confirm_names_the_fixed_stack_whatever_the_user_types():
 
     _act(tid, "detail", "generate_creative")
     confirm = _artifacts(tid, "model_confirm")[-1]["payload"]["confirm"]
-    assert confirm["recommended_model"] == config.MEDIA_MODELS["video"]
+    assert confirm["recommended_model"] == campaign.planned_model("video")
     assert confirm["reason"] and confirm["settings_note"] == SETTINGS_TOOLTIP
 
     _act(tid, "confirm", "generate_single")
@@ -743,7 +743,7 @@ def test_ad_card_fails_on_a_missing_or_off_spec_ratio():
         assert needle in str(exc.value)
 
 
-def test_ad_card_credits_account_for_every_paid_render(monkeypatch):
+def test_ad_card_estimates_account_for_every_render_without_inventing_provider_credits(monkeypatch):
     """MOCK_MEDIA renders at $0, which hides cost bugs — price the mock renders
     with the same estimator the confirm card quotes from, then compare."""
     from app.media import estimate_cost, generate as real_generate
@@ -766,8 +766,8 @@ def test_ad_card_credits_account_for_every_paid_render(monkeypatch):
 
     card = store.list_ad_cards(cid)[0]
     assert store.campaign_spend(cid) == pytest.approx(quoted)      # we spent the quote
-    assert card["total_cost_credits"] == pytest.approx(
-        round(store.campaign_spend(cid) / threadkit.CREDIT_USD, 1))
+    assert card["estimated_cost_usd"] == pytest.approx(store.campaign_spend(cid))
+    assert card["total_cost_credits"] == 0 and card["billing_status"] == "sample"
 
 
 # ------------------------------------------------ check 9: campaign lifecycle --
@@ -893,11 +893,13 @@ def test_a_truncated_agent_response_is_never_parsed_as_if_complete(monkeypatch):
     the real cause — which cost a full real-mode council run to diagnose. The
     runner must name the overflow instead, and keep the body that failed."""
     from app.agents import runner
+    monkeypatch.setattr(config, "LLM_PROVIDER", "anthropic")
 
     class _Details:
         thinking_tokens = 9000
 
     class _Usage:
+        input_tokens = 10
         output_tokens = 16000
         output_tokens_details = _Details()
 
@@ -907,6 +909,7 @@ def test_a_truncated_agent_response_is_never_parsed_as_if_complete(monkeypatch):
         text = '{"concept_verdicts": [{"concept_id": "o1", "element_verdicts": [{"reason": "the brand seat flagged'
 
     class _Resp:
+        id = "msg_fixture"
         stop_reason = "max_tokens"
         content = [_Block()]
         usage = _Usage()
@@ -927,6 +930,8 @@ def test_a_truncated_agent_response_is_never_parsed_as_if_complete(monkeypatch):
 
     class _Client:
         messages = _Messages()
+        def __enter__(self): return self
+        def __exit__(self, *exc): return False
 
     monkeypatch.setattr("anthropic.Anthropic", lambda *a, **k: _Client())
 
@@ -934,8 +939,8 @@ def test_a_truncated_agent_response_is_never_parsed_as_if_complete(monkeypatch):
         runner._llm_call("claude-sonnet-4-6", "sys", [{"role": "user", "content": "x"}], None, False)
 
     message = str(excinfo.value)
-    assert "incomplete, not invalid" in message      # honest about WHICH failure it is
-    assert "thinking" in message                     # names the budget contention
+    assert "incomplete" in message      # honest about WHICH failure it is
+    assert "usage was recorded" in message           # charge survives truncated output
     assert "delimiter" not in message                # never reported as a syntax bug
     # and it is retryable (ValueError) so the loop re-asks for a shorter answer
     assert isinstance(excinfo.value, ValueError)
@@ -945,6 +950,7 @@ def test_a_long_answer_split_across_text_blocks_is_not_silently_halved(monkeypat
     """`next(...)` took only the FIRST text block; a long council verdict that
     arrives in two blocks would have been truncated by the runner itself."""
     from app.agents import runner
+    monkeypatch.setattr(config, "LLM_PROVIDER", "anthropic")
 
     class _B:
         def __init__(self, text):
@@ -952,9 +958,11 @@ def test_a_long_answer_split_across_text_blocks_is_not_silently_halved(monkeypat
             self.text = text
 
     class _Resp:
+        id = "msg_fixture"
         stop_reason = "end_turn"
         content = [_B('{"a": 1,'), _B(' "b": 2}')]
-        usage = None
+        from types import SimpleNamespace
+        usage = SimpleNamespace(input_tokens=10, output_tokens=12)
 
     class _Stream:
         def __enter__(self):
@@ -972,6 +980,8 @@ def test_a_long_answer_split_across_text_blocks_is_not_silently_halved(monkeypat
 
     class _Client:
         messages = _Messages()
+        def __enter__(self): return self
+        def __exit__(self, *exc): return False
 
     monkeypatch.setattr("anthropic.Anthropic", lambda *a, **k: _Client())
 
@@ -1071,14 +1081,15 @@ def test_an_unmapped_claim_still_kill_flags_when_the_approved_list_is_empty():
 
 
 def test_real_mode_without_a_key_is_refused_up_front_not_discovered_mid_run(monkeypatch):
-    """MOCK_LLM=0 with no ANTHROPIC_API_KEY is a broken deployment. It must be
+    """MOCK_LLM=0 without the selected provider key is a broken deployment. It must be
     named at the door — /health and the start route — instead of dying deep in
     the SDK on the first agent call, which reads as a generic 500."""
     monkeypatch.setattr(config, "MOCK_LLM", False)
     monkeypatch.setattr(config, "LLM_KEY_PRESENT", False)
 
     reason = config.llm_unavailable_reason()
-    assert reason and "ANTHROPIC_API_KEY" in reason
+    key = "OPENAI_API_KEY" if config.LLM_PROVIDER == "openai" else "ANTHROPIC_API_KEY"
+    assert reason and key in reason
     assert main.health()["llm_unavailable"] == reason
 
     campaign_id = campaign.start_campaign("No key")["campaign_id"]
@@ -1689,50 +1700,22 @@ def test_progress_labels_follow_the_thread_that_is_running(monkeypatch):
     assert campaign._working["thr_second_campaign"] == "drafting options"
 
 
-def test_a_dropped_connection_retries_instead_of_discarding_the_run(monkeypatch):
-    """A transport error used to escape run_agent entirely — no log row (so the
-    node vanished from observability) and the whole rumination discarded because
-    one mid-stream blip hit the last node. On the production models that is
-    minutes of already-paid, already-successful work thrown away.
-
-    It is not a validation failure and must never be reported to the model as
-    one: there was no output to correct."""
+def test_a_dropped_connection_preserves_log_without_duplicate_paid_dispatch(monkeypatch):
+    """A stream may already be billed. Preserve uncertainty; explicit retry only."""
     from app.agents import runner as runner_mod
-
-    calls = {"n": 0}
-    sent: list = []
-
-    def flaky(model, system, messages, dispatcher, use_tools, **kw):
-        calls["n"] += 1
-        sent.append(messages)
-        if calls["n"] == 1:
-            raise runner_mod.AgentTransport("peer closed connection mid-stream")
-        return json.dumps(_feedback().model_dump(mode="json"))
-
+    calls = []
+    def dropped(*args, **kwargs):
+        calls.append(1)
+        raise runner_mod.AgentTransport("provider_response_unknown_may_be_charged")
     monkeypatch.setattr(config, "MOCK_LLM", False)
-    monkeypatch.setattr(runner_mod, "_llm_call", flaky)
-    monkeypatch.setattr("time.sleep", lambda _s: None)
-
-    review, log = runner_mod.run_agent(
-        agent="council.marketing_expert", prompt_name="council/marketing_expert",
-        model="test-model", user_payload={"stage": "campaign_options"},
-        schema=Feedback, preludes=["council/doctrine"],
-        dispatcher=None, use_tools=False)
-
-    assert isinstance(review, Feedback) and calls["n"] == 2 and log.attempts == 2
-
-    # the retry re-issued the request VERBATIM. Telling the model its answer
-    # "failed validation" would make it rewrite a good answer it never sent.
-    assert len(sent[1]) == 1, "a corrective message was appended after a transport drop"
-    assert "failed validation" not in json.dumps(sent[1], default=str)
-
-    # …and the node is in the run log, not missing from observability
-    rows = [json.loads(l) for l in
-            (config.LOG_DIR / "agent_runs.jsonl").read_text().splitlines() if l.strip()]
-    mine = [r for r in rows if r["agent"] == "council.marketing_expert"]
-    assert mine and mine[-1]["attempts"] == 2
-    assert any("connection dropped" in e or "peer closed" in e
-               for e in mine[-1]["validation_errors"])
+    monkeypatch.setattr(runner_mod, "_llm_call", dropped)
+    with pytest.raises(runner_mod.AgentTransport, match="may_be_charged"):
+        runner_mod.run_agent(agent="council.marketing_expert", prompt_name="council/marketing_expert",
+            model="test-model", user_payload={}, schema=Feedback, preludes=["council/doctrine"],
+            dispatcher=None, use_tools=False)
+    assert len(calls) == 1
+    rows = [json.loads(line) for line in (config.LOG_DIR / "agent_runs.jsonl").read_text().splitlines()]
+    assert rows[-1]["attempts"] == 1 and rows[-1]["validation_errors"] == ["provider_response_unknown_may_be_charged"]
 
 
 def test_an_api_status_error_is_not_retried_as_a_blip(monkeypatch):
@@ -3338,8 +3321,8 @@ def test_a_paid_render_whose_download_fails_is_still_recorded(monkeypatch, tmp_p
 
     assert attempts["n"] == 2, "a 5MB file over a proxy deserves one retry before giving up"
     message = str(exc.value)
-    assert "charged" in message and "https://cdn.example/x.png" in message, (
-        "the user must be told they were charged, and where the render still is")
+    assert "usage may be billed" in message and "USD amount is unknown" in message
+    assert "https://cdn.example/x.png" not in message, "provider URLs may contain signed credentials"
 
     rows = store.recent_generations(500)
     assert len(rows) == before + 1, "the spend was not recorded — the money is invisible"
@@ -3554,7 +3537,10 @@ def test_a_render_sends_the_references_the_model_declares_and_names_the_rest(mon
     config's env-loaded values: a test that reads .env passes or fails
     depending on whose machine runs it, which this suite has been bitten by.
     """
-    from app import media, pixelbin_client as pb
+    from app import media
+    # This transport payload fixture begins after the separately tested owner-reference boundary.
+    monkeypatch.setattr("app.media_storage.validate_provider_reference", lambda url: None)
+    from app import pixelbin_client as pb
 
     monkeypatch.setitem(config.MEDIA_REF_SLOTS, "image_final", 4)
     monkeypatch.setitem(config.PIXELBIN_MODELS, "image_final", "nanoBanana2_generate")
@@ -3617,6 +3603,8 @@ def test_a_fal_fallback_says_which_references_it_cannot_carry(monkeypatch):
     with a config default is testing the default, not the behaviour.
     """
     from app import media
+    # This transport payload fixture begins after the separately tested owner-reference boundary.
+    monkeypatch.setattr("app.media_storage.validate_provider_reference", lambda url: None)
 
     monkeypatch.setitem(config.MEDIA_REF_SLOTS, "video", 2)
     monkeypatch.setitem(config.MEDIA_MODELS, "video", "fal-ai/veo3.1/image-to-video")
@@ -3776,10 +3764,9 @@ def test_the_canon_gate_assumes_the_cheap_render_and_says_so(monkeypatch):
     assert not any("angle" in lab.lower() for lab in labels), (
         "the angle question is back — the addendum removed it")
     note = question.get("note") or ""
-    assert config.IMAGE_RESOLUTION_DEFAULT in note, (
-        "the assumed resolution was not stated; an assumption the user cannot see "
-        "is one they cannot correct")
-    assert config.IMAGE_RESOLUTION_SHARP in note, "the upgrade was never offered"
+    assert "Sample" in note and "no provider call or charge" in note
+    assert "do not demonstrate production resolution" in note
+    assert "$" not in note, "sample placeholders must not assert provider charges"
 
     # and the upgrade is a real, routed event — not a button that does nothing
     assert any("sharper" in lab.lower() for lab in labels), "no upgrade CTA"
@@ -4189,6 +4176,8 @@ def test_a_second_reference_becomes_the_end_frame_where_a_model_takes_one(monkey
     not surplus there — it is the other half of the shot, and dropping it would
     throw away the only control that makes a cut land."""
     from app import media
+    # This transport payload fixture begins after the separately tested owner-reference boundary.
+    monkeypatch.setattr("app.media_storage.validate_provider_reference", lambda url: None)
 
     monkeypatch.setitem(config.MEDIA_REF_SLOTS, "video", 3)
     monkeypatch.setitem(config.MEDIA_MODELS, "video",
@@ -4330,3 +4319,72 @@ def test_a_clip_reports_the_duration_it_actually_is(monkeypatch, tmp_path):
     assert 3.7 <= out["duration_s"] <= 4.3, (
         f"the clip reports {out['duration_s']}s; the file is 4s. The provider "
         "snapped the duration and nobody wrote it down")
+
+
+def test_native_mock_assume_combines_user_fragments_without_fabricating_claims():
+    started = campaign.start_campaign("Native fragmented intake")
+    cid, tid = started["campaign_id"], started["thread"]["id"]
+    for text in ("We sell ceramic travel mugs.", "It is for commuters.",
+                 "We want awareness on Instagram feed."):
+        _text(tid, text)
+    context = CampaignContext.model_validate(store.get_series(cid)["context"])
+    assert context.product.name == "ceramic travel mugs"
+    assert context.campaign.target_audience == "commuters"
+    assert context.campaign.objective == "awareness"
+    assert context.campaign.platforms == ["instagram_feed"]
+    assert not context.assumptions
+    assert not context.brand or not context.brand.claims_confirmed
+    assert any(o["event"] == "begin" for o in _envelopes(tid)[-1]["question"]["options"])
+    _act(tid, "intake", "begin")
+    assert store.get_thread(tid)["stage"] == "brief"
+
+
+def test_native_mock_assume_labels_only_missing_required_fields_and_ignores_agent_prose():
+    current = CampaignContext(name="Known product", product=PRODUCT, brand=BRAND)
+    result = campaign_mock.mock_campaign_intake({
+        "context": current.model_dump(mode="json"), "assume_mode": True,
+        "transcript": ["agent asked: conversions for CEOs on LinkedIn?", "user: Not sure yet."],
+    }, None)
+    context = CampaignContext.model_validate(result)
+    assert context.product == current.product and context.brand == current.brand
+    assert context.campaign.objective == "awareness"
+    assert context.campaign.target_audience == "General audience (assumed)"
+    assert context.campaign.platforms == ["instagram_feed"]
+    assert len(context.assumptions) == 3
+    assert all(note.startswith("Assumed ") for note in context.assumptions)
+
+
+def test_incomplete_assume_response_never_offers_start_or_recurses(monkeypatch):
+    started = campaign.start_campaign("Incomplete assume response")
+    cid, tid = started["campaign_id"], started["thread"]["id"]
+    current = CampaignContext(name="Incomplete assume response", product=PRODUCT)
+    calls = []
+
+    def incomplete(**kwargs):
+        calls.append(kwargs["agent"])
+        return current, object()
+
+    monkeypatch.setattr(campaign, "run_agent", incomplete)
+    campaign._ws(tid)["intake_asks"] = 10
+    campaign._assume_and_proceed(tid, cid, current)
+    assert calls == ["campaign_intake.assume"]
+    last = _envelopes(tid)[-1]
+    assert last["question"]["text"]
+    assert not any(o.get("event") == "begin" for o in last["question"]["options"])
+    assert not any(a.get("actions") for a in last["artifacts"])
+    assert store.get_thread(tid)["stage"] == "intake"
+
+
+def test_assume_result_preserves_explicit_claim_confirmation_gate(monkeypatch):
+    started = campaign.start_campaign("Assume needs claim approval")
+    cid, tid = started["campaign_id"], started["thread"]["id"]
+    current = CampaignContext(name="Assume needs claim approval", product=PRODUCT,
+                              campaign=CAMPAIGN, brand={**BRAND, "claims_confirmed": False})
+    monkeypatch.setattr(campaign, "run_agent", lambda **kwargs: (current, object()))
+    campaign._assume_and_proceed(tid, cid, current)
+    last = _envelopes(tid)[-1]
+    events = {o.get("event") for o in last["question"]["options"]}
+    assert "confirm_claims" in events and "begin" not in events
+    saved = store.get_series(cid)["context"]
+    assert saved["brand"]["approved_claims"] == BRAND["approved_claims"]
+    assert saved["brand"]["claims_confirmed"] is False

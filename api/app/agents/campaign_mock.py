@@ -46,6 +46,8 @@ def mock_campaign_intake(payload: dict[str, Any], dispatcher: Optional[ToolDispa
     inventing an audience. claims_confirmed is never touched here: only the
     user's Brand-card PUT sets it."""
     context = dict(payload["context"])
+    if payload.get("assume_mode"):
+        return _assume_intake(context, payload.get("transcript") or [])
     message = (payload.get("message") or "").strip()
     low = message.lower()
     for block, cues in _BLOCK_CUES.items():
@@ -55,6 +57,50 @@ def mock_campaign_intake(payload: dict[str, Any], dispatcher: Optional[ToolDispa
         if filled is not None:
             context[block] = filled
         break
+    return context
+
+
+def _assume_intake(context: dict[str, Any], transcript: list[str]) -> dict:
+    """Join user fragments; make only absent required fields explicit guesses.
+
+    Agent questions are deliberately excluded: their suggested answers are not
+    evidence that the user chose them. Existing blocks and claim permissions
+    are copied unchanged, just as in ordinary mock intake.
+    """
+    messages = [line[len("user: "):].strip() for line in transcript
+                if isinstance(line, str) and line.startswith("user: ")]
+    notes = list(context.get("assumptions") or [])
+    if context.get("product") is None:
+        product = next((found for message in reversed(messages)
+                        if (found := _intake_block("product", message, message.lower()))), None)
+        if product is None:
+            product = {"name": "Unspecified product", "description": "Product details not supplied."}
+            notes.append("Assumed a placeholder product — its name and description still need your review.")
+        context["product"] = product
+    if context.get("campaign") is None:
+        objective, audience, platforms = None, None, []
+        for message in messages:
+            low = message.lower()
+            objective = next((o for o in ("awareness", "traffic", "conversion") if o in low), objective)
+            audience = (_tail(message, "audience") or _tail(message, "targeting")
+                        or _tail(message, "for") or audience)
+            named = [p for p, cues in _PLATFORM_CUES.items() if any(c in low for c in cues)]
+            platforms = named or platforms
+        if objective is None:
+            objective = "awareness"
+            notes.append("Assumed awareness as the objective — no objective was supplied.")
+        if audience is None:
+            audience = "General audience (assumed)"
+            notes.append("Assumed a general audience — tell me who should see this at the brief.")
+        if not platforms:
+            platforms = ["instagram_feed"]
+            notes.append("Assumed Instagram feed as the placement — no platform was supplied.")
+        context["campaign"] = {
+            "objective": "conversions" if objective == "conversion" else objective,
+            "target_audience": audience, "platforms": platforms,
+            "creative_type": "video" if any("video" in m.lower() for m in messages) else "image",
+        }
+    context["assumptions"] = notes
     return context
 
 

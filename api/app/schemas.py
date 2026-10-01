@@ -875,6 +875,8 @@ class CanonSheet(Strict):
     # and, worse, produced N views that agree only by luck. Views composed in a
     # single pass agree by construction, which is the whole reason the sheet is
     # worth being the reference for everything downstream.
+    provider: Optional[str] = None
+    model: Optional[str] = None
     sheet_asset_id: Optional[str] = None
     # The single canonical view the sheet was generated FROM. Panels drift when
     # a sheet is asked for cold — same words, six different shoes — so one image
@@ -1148,6 +1150,8 @@ KEYFRAME_CHECKS: tuple[str, ...] = ("face", "hands", "product_geometry",
 
 
 class Keyframe(Strict):
+    provider: Optional[str] = None
+    model: Optional[str] = None
     shot_slot: str
     asset_id: str
     picked_from: int = Field(default=1, ge=1)     # generated N, chose 1
@@ -1335,7 +1339,9 @@ class AdCard(Strict):
     ratios: list[str] = Field(min_length=1)
     naming: str  # e.g. brand_campaign_option_variant_ratio
     media: list[PostMedia] = Field(default_factory=list)
-    total_cost_credits: float = 0.0
+    total_cost_credits: Optional[float] = None
+    estimated_cost_usd: float = 0.0
+    billing_status: Literal["sample", "usd_unverified"] = "usd_unverified"
     status: Literal["draft", "ready", "live"] = "ready"
     created_at: float = 0.0
 

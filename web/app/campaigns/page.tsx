@@ -1,4 +1,6 @@
 "use client";
+import { Plus, Image, MoreVertical, Search } from "lucide-react";
+import { session } from "@/lib/client/session";
 
 // My Campaigns — a folder GRID, which Addendum-03 §02 always wanted and the
 // row list never was. Owner decision 2026-08-26 made it the landing surface:
@@ -32,20 +34,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 // One accent, one neutral, one inverted — no second hue anywhere.
 function chipClass(status: string): string {
-  if (status === "live") return "border-transparent bg-white text-[var(--ms-bg)] font-bold";
+  if (status === "live") return "border-[var(--border-positive)] bg-[var(--bg-positive-translucent)] text-[var(--fg-positive)] font-semibold";
   if (status === "draft") return "border-[var(--ms-line)] text-[var(--ms-text-2)]";
   return "border-[var(--ms-blue)] bg-[var(--ms-blue-wash)] text-[var(--ms-blue-text)]";
-}
-
-/** Deterministic per-campaign tint so a card without creatives still reads as
- *  itself in the grid. Derived from the id, never random — a thumbnail that
- *  changed on every poll would be noise pretending to be information. */
-function tint(id: string, i: number): string {
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const a = 18 + ((h >> (i * 3)) % 26);
-  const b = 34 + ((h >> (i * 5)) % 30);
-  return `linear-gradient(135deg, hsl(230 ${a}% ${12 + (i % 3) * 4}%), hsl(233 ${b}% ${22 + (i % 3) * 7}%))`;
 }
 
 export default function CampaignsPage() {
@@ -95,7 +86,9 @@ export default function CampaignsPage() {
     setBusy(true);
     setError(null);
     try {
+      const epoch = session.capture();
       const made = await api.campaigns.create(name.trim());
+      session.assert(epoch);
       router.push(`/studio/thread/${made.thread.id}?kind=campaign`);
     } catch (e) {
       setError(e instanceof MsApiError ? e.message : String(e));
@@ -119,7 +112,7 @@ export default function CampaignsPage() {
 
   return (
     <div
-      className="ms-dark min-h-[calc(100dvh-53.5px)] bg-[var(--ms-bg)] px-10 py-8 text-[var(--ms-text)]"
+      className="campaign-browse ms-dark min-h-[calc(100dvh-53.5px)] bg-[var(--ms-bg)] px-10 py-8 text-[var(--ms-text)]"
       onClick={() => setMenu(null)}
     >
       <CampaignStyles />
@@ -132,7 +125,7 @@ export default function CampaignsPage() {
           </p>
         </div>
         <label className="flex h-10 w-[330px] items-center gap-2 rounded-[12px] border border-[var(--ms-line)] bg-[var(--ms-surface)] px-3.5">
-          <span aria-hidden className="text-[var(--ms-text-2)]">⌕</span>
+          <Search size={16} aria-hidden="true" className="shrink-0 text-[var(--ms-text-2)]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -143,7 +136,7 @@ export default function CampaignsPage() {
         </label>
       </div>
 
-      <div className="mt-6 flex items-center justify-between border-b border-[var(--ms-line)] pb-3.5">
+      <div className="campaign-toolbar mt-6 flex items-center justify-between border-b border-[var(--ms-line)] pb-3.5">
         <div className="flex gap-1">
           {(["current", "archived"] as const).map((t) => (
             <button
@@ -196,7 +189,7 @@ export default function CampaignsPage() {
           className="group text-left"
         >
           <div className="grid aspect-[16/10] place-items-center rounded-[12px] border border-dashed border-[var(--ms-line-strong)] bg-[var(--ms-surface)] transition-colors group-hover:border-[var(--ms-blue)]">
-            <span className="text-[26px] font-extralight text-[var(--ms-text-2)]">+</span>
+            <Plus size={26} aria-hidden="true" className="text-[var(--ms-text-2)]" />
           </div>
           <p className="mt-2.5 text-[14px] text-[var(--ms-text-2)] group-hover:text-[var(--ms-text)]">
             New campaign
@@ -211,19 +204,11 @@ export default function CampaignsPage() {
               }
               className="group w-full text-left"
             >
-              <div className="grid aspect-[16/10] grid-cols-3 grid-rows-2 gap-px overflow-hidden rounded-[12px] border border-[var(--ms-line)] transition-colors group-hover:border-[var(--ms-blue)]">
-                {row.creative_count > 0 ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <span key={i} style={{ background: tint(row.id, i) }} />
-                  ))
-                ) : (
-                  <span
-                    className="col-span-3 row-span-2 grid place-items-center text-[22px] text-[var(--ms-line-strong)]"
-                    aria-hidden
-                  >
-                    ✦
-                  </span>
-                )}
+              <div className="grid aspect-[16/10] place-items-center overflow-hidden rounded-[12px] border border-[var(--ms-line)] bg-[var(--bg-depth)] transition-colors group-hover:border-[var(--ms-blue)]">
+                {row.thumbnail_asset_id ? (
+                  // Exact owner-authorized file; no invented placeholder artwork.
+                  <img src={api.assets.fileUrl(row.thumbnail_asset_id)} alt={`${row.name} creative`} loading="lazy" className="h-full w-full object-cover" />
+                ) : <Image size={26} aria-hidden="true" className="text-[var(--ms-text-2)]" />}
               </div>
               <div className="mt-2.5 flex items-center gap-2">
                 <span
@@ -239,7 +224,7 @@ export default function CampaignsPage() {
                   {STATUS_LABEL[row.status] ?? row.status}
                 </span>
                 {row.creative_count > 0 && <span>{row.creative_count} creative</span>}
-                {row.spend_credits > 0 && <span>· {row.spend_credits} cr</span>}
+                {row.cached && <span>· Prepared sample</span>}
               </p>
             </button>
 
@@ -251,7 +236,7 @@ export default function CampaignsPage() {
               }}
               className="absolute right-0 top-[calc(100%-46px)] px-2 text-[var(--ms-text-2)] hover:text-[var(--ms-text)]"
             >
-              ⋮
+              <MoreVertical size={18} aria-hidden="true" />
             </button>
             {menu === row.id && (
               <div
@@ -303,6 +288,8 @@ export default function CampaignsPage() {
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && create()}
               placeholder="Spring launch"
+              aria-label="Campaign name"
+              maxLength={120}
               aria-invalid={!!nameProblem}
               className="cb-input mt-5 !h-[46px] !text-[14px]"
             />
@@ -343,12 +330,7 @@ export default function CampaignsPage() {
                 ? `all ${confirming.creative_count} creative`
                 : "any creative"}{" "}
               go with it. Canon sheets stay — those belong to the workspace, not this campaign.
-              {confirming.spend_credits > 0 && (
-                <>
-                  {" "}
-                  The {confirming.spend_credits} credits already spent are not refunded.
-                </>
-              )}
+
             </p>
             <div className="mt-5 flex justify-end gap-2.5">
               <button className="cb-btn cb-btn-ghost" onClick={() => setConfirming(null)} disabled={busy}>

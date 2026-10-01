@@ -1,11 +1,14 @@
 "use client";
+import { mediaCost } from "@/lib/client/media-pricing";
+import ProviderBadge from "./provider-badge";
+import PrivateDownload from "./private-download";
 
 // Addendum-01 §01: every artifact renders as a card stack inside an agent
 // message — never prose. Compact in-thread cards; the right panel (§02) holds
 // the full story.
 
 import { useState } from "react";
-import { API_URL, ArtifactEnvelope, PLATFORM_LABELS, fmtStat } from "@/lib/api";
+import { API_URL, ArtifactEnvelope, PLATFORM_LABELS, fmtStat, req } from "@/lib/api";
 
 const media = (url: string) => (url?.startsWith("/") ? `${API_URL}${url}` : url);
 
@@ -211,7 +214,7 @@ export function ArtifactCard({
         )}
         {p.cost_estimate_credits != null && (
           <p className="mono mt-1 text-[11.5px] text-muted">
-            Est. {p.cost_estimate_credits} credits (~${p.cost_estimate_usd}) · draft-first offered on video
+            {mediaCost(p.cost_estimate_usd, p)} · draft-first offered on video
           </p>
         )}
         <ActionRow artifact={artifact} onAction={onAction} busy={busy} />
@@ -277,7 +280,7 @@ export function ArtifactCard({
         <div className="mt-2 grid grid-cols-2 gap-2">
           {(p.items ?? []).map((it: any) => (
             <div key={it.asset_id} className="rounded-[12px] border border-line bg-paper p-2">
-              <p className="mono text-[10px] uppercase text-muted">{it.slot} {it.cost > 0 && `· $${it.cost.toFixed(2)}`}</p>
+              <p className="mono text-[10px] uppercase text-muted">{it.slot} {`· ${mediaCost(it.cost, p, it)}`} <ProviderBadge provider={p.sample_media ? "sample" : it.provider} model={it.model} /></p>
               {it.kind === "video" && it.preview_url && (
                 <video controls muted preload="metadata" src={media(it.preview_url)} className="mt-1 max-h-52 w-full rounded-[8px] bg-ink" />
               )}
@@ -302,7 +305,7 @@ export function ArtifactCard({
     return (
       <div className="card border-l-4 border-l-accent p-4">
         <div className="flex items-center justify-between">
-          <p className="field-label">Post Card · {p.status?.toUpperCase()} · {p.total_cost_credits} credits</p>
+          <p className="field-label">Post Card · {p.status?.toUpperCase()} · {mediaCost(p.estimated_cost_usd, p)}</p>
           <span className="chip">{(p.platforms ?? []).map((x: string) => PLATFORM_LABELS[x] ?? x).join(" · ")}</span>
         </div>
         <div className="mt-2 flex gap-2 overflow-x-auto">
@@ -314,7 +317,7 @@ export function ArtifactCard({
                 <img src={media(m.url)} alt="" className="max-h-40 w-full rounded-[8px] object-cover" />
               )}
               {m.kind === "audio" && <audio controls preload="none" src={media(m.url)} className="h-8 w-full" />}
-              <p className="mono mt-0.5 text-[9.5px] text-muted">{m.params?.prompt_id} · ${m.params?.cost?.toFixed?.(2) ?? "0"}</p>
+              <p className="mono mt-0.5 text-[9.5px] text-muted">{m.params?.prompt_id} · {mediaCost(m.params?.cost, p, m.params)}</p>
             </div>
           ))}
         </div>
@@ -332,9 +335,9 @@ export function ArtifactCard({
         ))}
         <p className="mt-1.5 text-[11.5px] text-muted">{(pc.hashtags ?? []).join(" ")} · CTA: {pc.cta}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <a className="btn btn-primary !px-3 !py-1" href={`${API_URL}/api/ad-cards/${p.id}/bundle`}>
+          <PrivateDownload className="btn btn-primary !px-3 !py-1" href={`${API_URL}/api/ad-cards/${p.id}/bundle`}>
             Download bundle
-          </a>
+          </PrivateDownload>
           {p.status !== "posted" && (
             <button className="btn btn-ghost !px-3 !py-1" disabled={busy} onClick={() => onAction(artifact.id, "mark_posted")}>
               Mark Posted
@@ -367,11 +370,12 @@ function AssetPromptCard({
   const editable = p.asset_slot !== "all" && p.asset_slot !== "rest";
   const [text, setText] = useState<string>(p.prompt_text ?? "");
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between">
         <p className="field-label">{artifact.title}</p>
-        <span className="mono text-[11px] text-muted">{p.model} · ${Number(p.cost).toFixed(2)}</span>
+        <span className="mono text-[11px] text-muted">{p.model} · {mediaCost(p.cost, p)}</span>
       </div>
       {editable ? (
         <>
@@ -387,15 +391,16 @@ function AssetPromptCard({
               className="btn btn-ghost !px-2.5 !py-1 !text-[11.5px]"
               disabled={busy || text === p.prompt_text}
               onClick={async () => {
-                await fetch(`${API_URL}/api/threads/${window.location.pathname.split("/").pop()}/prompts/${p.asset_slot}`, {
+                try { setError(""); await req(`/api/threads/${window.location.pathname.split("/").pop()}/prompts/${p.asset_slot}`, {
                   method: "POST", headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ prompt_text: text }),
                 });
-                setSaved(true);
+                setSaved(true); } catch (e) { if (e instanceof Error && e.name !== "AbortError") setError(e.message); }
               }}
             >
               {saved ? "Saved — used verbatim" : "Save edit"}
             </button>
+            {error && <span className="form-error" role="alert">{error}</span>}
             {(p.locks ?? []).length > 0 && (
               <span className="mono truncate text-[9.5px] text-muted" title={(p.locks ?? []).join("; ")}>
                 locks applied

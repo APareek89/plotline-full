@@ -14,7 +14,7 @@
 // claims_confirmed:true.
 
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
-import { API_URL, PLATFORM_LABELS, api } from "@/lib/api";
+import { API_URL, PLATFORM_LABELS, api, req } from "@/lib/api";
 
 // ---- contracts (mirror app/schemas.py) --------------------------------------
 
@@ -80,32 +80,11 @@ export interface ClaimsExtract {
   notes: string[];
 }
 
-// ---- fetch helpers (lib/api.ts is owned by another agent — call directly) ----
-
-export class MsApiError extends Error {
-  status: number;
-  detail: unknown;
-  constructor(status: number, detail: unknown, message: string) {
-    super(message);
-    this.status = status;
-    this.detail = detail;
-  }
-}
-
-export async function msFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { ...init, cache: "no-store" });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    let detail: unknown = text;
-    try {
-      detail = JSON.parse(text).detail ?? text;
-    } catch {
-      /* non-JSON error body — keep the text */
-    }
-    throw new MsApiError(res.status, detail, typeof detail === "string" ? detail : `${res.status} ${res.statusText}`);
-  }
-  return res.json() as Promise<T>;
-}
+// All client requests share the account/CSRF boundary, including multipart.
+export { ApiError as MsApiError } from "@/lib/client/session";
+import { session } from "@/lib/client/session";
+import { ApiError as MsApiError } from "@/lib/client/session";
+export const msFetch = req;
 
 export const msJson = <T,>(path: string, method: "POST" | "PUT", body?: unknown) =>
   msFetch<T>(path, {
@@ -467,6 +446,7 @@ export function PromptModal({
         : null);
 
   const onFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const epoch = session.capture();
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (!files.length) return;
@@ -481,7 +461,9 @@ export function PromptModal({
     setUploading(`Uploading ${take.length} image${take.length === 1 ? "" : "s"}`);
     try {
       for (const f of take) {
+        session.assert(epoch);
         const up = await api.uploads.create(f, "brand_asset");
+        session.assert(epoch);
         const preview = URL.createObjectURL(f);
         created.current.push(preview);
         setAttached((a) => [...a, { id: up.id, filename: up.filename, preview }]);
@@ -795,7 +777,9 @@ export function CampaignDetailCards({
   useEffect(() => () => created.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
   const attach = async (file: File, kind: string): Promise<string> => {
+    const epoch = session.capture();
     const up = await api.uploads.create(file, kind);
+    session.assert(epoch);
     const preview = URL.createObjectURL(file);
     created.current.push(preview);
     setUploads((u) => ({ ...u, [up.id]: { id: up.id, filename: up.filename, preview } }));

@@ -1,4 +1,7 @@
 "use client";
+import PrivateDownload from "./private-download";
+import ProviderBadge from "./provider-badge";
+import { X } from "lucide-react";
 
 // v5 Stage 5 — the artifact detail view.
 //
@@ -62,6 +65,8 @@ export function ArtifactDetail({
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
   const [gone, setGone] = useState(false);
+  const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!assetId) return;
@@ -69,7 +74,7 @@ export function ArtifactDetail({
     api.assets
       .get(assetId)
       .then((m) => live && (setMeta(m), setName(m.name ?? "")))
-      .catch(() => live && setMeta(null));
+      .catch((e) => { if (live && e.name !== "AbortError") { setMeta(null); setError(e.message); } });
     return () => {
       live = false;
     };
@@ -85,7 +90,7 @@ export function ArtifactDetail({
   const commitName = useCallback(() => {
     setRenaming(false);
     if (!assetId || !name.trim()) return;
-    api.assets.rename(assetId, name.trim()).catch(() => undefined);
+    api.assets.rename(assetId, name.trim()).catch((e) => { if (e.name !== "AbortError") setError(e.message); });
   }, [assetId, name]);
 
   // Only what is SAFE reaches this panel. `spends` is stamped server-side, so
@@ -101,7 +106,7 @@ export function ArtifactDetail({
   const long = prompt.length > 320;
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-[var(--ms-bg,#0B0D12)]">
+    <div className="artifact-detail-shell fixed inset-0 z-50 flex bg-[var(--ms-bg,#0B0D12)]">
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-8">
         <div className="mx-auto max-w-[860px]">
           {meta && meta.kind === "image" ? (
@@ -130,7 +135,7 @@ export function ArtifactDetail({
             aria-label="Close detail"
             className="rounded-[6px] px-2 py-1 text-[13px] text-[var(--ms-text-2)] hover:bg-[var(--ms-elev)]"
           >
-            ✕
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 
@@ -168,6 +173,8 @@ export function ArtifactDetail({
           {renaming ? (
             <input
               autoFocus
+              aria-label="Asset name"
+              maxLength={120}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onBlur={commitName}
@@ -189,6 +196,7 @@ export function ArtifactDetail({
           <div>
             <p className={RAIL_LABEL}>Settings</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <ProviderBadge provider={meta.provider} model={meta.settings.model} />
               {meta.settings.model && <span className={CHIP}>{meta.settings.model}</span>}
               {meta.settings.aspect_ratio && (
                 <span className={CHIP}>Aspect ratio: {meta.settings.aspect_ratio}</span>
@@ -223,29 +231,32 @@ export function ArtifactDetail({
             </button>
           ))}
           {assetId && (
-            <a
+            <PrivateDownload
               href={api.assets.fileUrl(assetId)}
-              download
               className="rounded-[7px] px-2.5 py-2 text-left text-[12.5px] hover:bg-[var(--ms-elev)]"
             >
               Download
-            </a>
+            </PrivateDownload>
           )}
           {assetId && !gone && (
             <button
-              onClick={() => {
-                api.assets.remove(assetId).catch(() => undefined);
-                setGone(true);
+              disabled={deleting}
+              onClick={async () => {
+                setDeleting(true); setError("");
+                try { await api.assets.remove(assetId); setGone(true); }
+                catch (e) { if (e instanceof Error && e.name !== "AbortError") setError(e.message); }
+                finally { setDeleting(false); }
               }}
               className="rounded-[7px] px-2.5 py-2 text-left text-[12.5px] text-[var(--ms-danger-text,#FFFFFF)] hover:bg-[var(--ms-elev)]"
             >
               Delete
             </button>
           )}
+          {error && <p className="form-error" role="alert">{error}</p>}
           {gone && <p className={`px-2.5 text-[11px] ${MUTED}`}>Deleted. The file and its cost stay in the log.</p>}
           {(artifact.actions ?? []).some((a) => a.spends) && (
             <p className={`px-2.5 pt-1 text-[11px] ${MUTED}`}>
-              Anything that re-renders costs money, so it stays in the chat with its price.
+              Rendering actions stay in the conversation, where you review provider and cost information before proceeding.
             </p>
           )}
         </div>

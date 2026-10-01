@@ -1,18 +1,32 @@
-%% granularity: master
-%% files: app/orchestrator.py app/agents/runner.py app/validators.py app/ccs.py app/agents/mock.py
+%% granularity: full
+%% files: app/orchestrator.py, app/agents/runner.py, app/validators.py, app/ccs.py, app/agents/mock.py, app/agents/providers.py
+%% Legacy planning lane retained behind API; the campaign front door is diagram10.
 flowchart TD
-    U[User submits context form + uploads] --> IN["AGENT intake (haiku; sonnet if files)\nin: form+uploads → out: CreatorContext"]
-    IN --> RET["FUNCTION retrieval via RAG contract :8787\nin: niche/query → out: assets, chunks, stats, trends"]
-    RET --> P1["AGENT planner pass 1 (sonnet)\nin: context+refs → out: Plan (concepts + proposed ratings + evidence)"]
-    P1 --> V1{"FUNCTION validators\nschema ok? citations resolve? slots match cadence?"}
-    V1 -- "invalid (≤2 retries)" --> P1
-    V1 -- "still invalid" --> HF["Hard fail surfaced to user\n(never silently accepted)"]
-    V1 -- valid --> FB["AGENT feedback / red-team (sonnet, dynamic persona)\nin: Plan → out: verdict per element + 4 lenses + kill flags + fixes"]
-    FB --> CCS["FUNCTION server recomputes CCS\nH=3 M=2 L=1 ×weights /3 · hook=L → rework gate"]
-    CCS --> FLAG{"flagged concepts?\n(kill flag or CCS ≤ 70)"}
-    FLAG -- "yes (max 1 loop)" --> P2["AGENT planner refine\nonly flagged concepts — diff-checked byte-identical elsewhere"]
-    P2 --> FB2["AGENT feedback re-judge (flagged only)"] --> CCS
-    FLAG -- no --> OPT["AGENT planner options pass\nexactly 3 distinct angles per concept with CCS > 70"]
-    OPT --> DB[("FUNCTION SQLite persist\nplan + feedback + options + concept_state")]
-    DB --> UI["UI: timeline of concept cards\napprove / feedback+regenerate / reorder"]
-    UI -- "regenerate w/ user feedback" --> P2
+  U["Plan request [FUNCTION]<br/>in: owned creator context<br/>out: validated planning input"]
+  RET["Retrieval [FUNCTION]<br/>in: niche and query<br/>out: resolved evidence"]
+  P1["Planner [AGENT · gpt-5.4-mini default]<br/>in: context and evidence<br/>out: plan with proposed ratings"]
+  V1{"Validation [FUNCTION]<br/>in: structured plan<br/>out: schema, citations and cadence valid?"}
+  FB["Feedback [AGENT · gpt-5.4-mini default]<br/>in: accepted plan<br/>out: review, kill flags and fixes"]
+  CCS["CCS calculation [FUNCTION]<br/>in: element ratings and weights<br/>out: server-recomputed score"]
+  FLAG{"Refinement gate [FUNCTION]<br/>in: kill flags and CCS<br/>out: flagged or CCS at most70?"}
+  P2["Refinement [AGENT · gpt-5.4-mini default]<br/>in: flagged subset and feedback<br/>out: revised subset; untouched bytes retained"]
+  OPT["Options [AGENT · gpt-5.4-mini default]<br/>in: qualified concepts<br/>out: distinct options per concept"]
+  DB["Owner persistence [DATA · PostgreSQL]<br/>in: plan, feedback and options<br/>out: owned plan and concept state"]
+  HF["Explicit failure [FUNCTION]<br/>in: exhausted validation attempt<br/>out: safe visible failure"]
+  U --> RET --> P1 --> V1
+  V1 -->|"invalid; at most2 validation retries"| P1
+  V1 -->|"retry budget exhausted"| HF
+  V1 -->|"valid"| FB --> CCS --> FLAG
+  FLAG -->|"yes; at most1 refinement pass"| P2 --> FB
+  FLAG -->|"no"| OPT --> DB
+  classDef agent fill:#dbeafe,stroke:#2563eb,color:#0b2a5b;
+  classDef fn fill:#dcfce7,stroke:#16a34a,color:#052e16;
+  classDef dec fill:#f3e8ff,stroke:#9333ea,color:#2a0a4a;
+  classDef term fill:#e5e7eb,stroke:#6b7280,color:#111827;
+  classDef ask fill:#cffafe,stroke:#0891b2,color:#083344;
+  classDef data fill:#ede9fe,stroke:#7c3aed,color:#2a0a4a;
+  class U,RET,CCS fn;
+  class P1,FB,P2,OPT agent;
+  class V1,FLAG dec;
+  class DB data;
+  class HF term;

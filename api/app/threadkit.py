@@ -17,7 +17,8 @@ import threading
 from typing import Any, Optional
 
 from app import ccs as ccs_mod
-from app import store
+from app import store, config
+from app.execution import fixture_mode, require_execution
 from app.rag_client import rag
 from app.schemas import (
     AgentMessage,
@@ -35,7 +36,7 @@ from app.tools import ToolDispatcher
 
 # One credit = $0.10. The Ad Card reports credits; store.campaign_spend()
 # reports USD. Both must reconcile exactly — see the Ad Card acceptance check.
-CREDIT_USD = 0.10
+CREDIT_USD = 0.10  # Legacy synthetic display unit; never provider billing or a conversion guarantee.
 
 
 def _asset_url(asset_id: str) -> str:
@@ -52,12 +53,24 @@ _lock_guard = threading.Lock()
 
 
 def working_step(thread_id: str) -> Optional[str]:
+    _require_thread(thread_id)
     return _working.get(thread_id)
 
 
 def _thread_lock(thread_id: str) -> threading.Lock:
+    _require_thread(thread_id)
     with _lock_guard:
+        if thread_id not in _locks and len(_locks) >= 4000:
+            raise ValueError("Workspace capacity reached")
         return _locks.setdefault(thread_id, threading.Lock())
+
+
+def _require_thread(thread_id: str) -> None:
+    if fixture_mode():
+        return
+    actor = require_execution()
+    if actor.thread_id != thread_id and not store.get_thread(thread_id):
+        raise ValueError("Thread not found")
 
 
 # ----------------------------------------------------------------- envelope --
@@ -99,6 +112,12 @@ def _say(
         )
     if q is not None and not q.options and artifacts:
         q.options = _options_from(artifacts)
+    from app.execution import is_cached
+    cached = is_cached()
+    for artifact in artifacts or []:
+        artifact.payload = {**artifact.payload, "cached": cached,
+                            "sample_media": bool(config.MOCK_MEDIA or cached),
+                            "billing_status": "sample" if config.MOCK_MEDIA or cached else "usd_unverified"}
     msg = AgentMessage(thread_id=thread_id, text=text, artifacts=artifacts or [], question=q)
     store.append_message(thread_id, "agent", msg.model_dump(mode="json"))
 
@@ -167,6 +186,9 @@ def _pending(thread_id: str) -> dict[str, Any]:
     edited prompt is used VERBATIM downstream (§08 rule 7). It lives here
     rather than in a driver because both drivers and the route need it.
     """
+    _require_thread(thread_id)
+    if thread_id not in _WORKSPACES and len(_WORKSPACES) >= 4000:
+        raise ValueError("Workspace capacity reached")
     return _WORKSPACES.setdefault(thread_id, {
         "route": None, "script": None, "voice": None,
         "prompts": {}, "assets": {}, "accepted": set(),

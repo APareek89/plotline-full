@@ -48,3 +48,17 @@ Runs ONLY with approval (consent.paid_evals=ask) or at milestones.
 ## Run journal (paid/slow checks only)
 | Date | Hypothesis (changed X, expect eval N to flip because W) | Result | Cost note |
 |------|----------------------------------------------------------|--------|-----------|
+
+
+## Portfolio launch verification — 2026-10-01
+
+The existing `status: offered` is unchanged. The approved launch uses isolated mock development and one separately reviewed root-triggered live proof; it does not authorize the historical golden set above.
+
+- Run the complete current Python suite from `api/` without a path argument; current backend checkpoint256 passed/4 existing retrieval skips.
+- Run `node --experimental-strip-types --test tests/client-session.test.mjs tests/media-pricing.test.mjs` from `web/`:10 tests pass.
+- Build with `PLOTLINE_DIST_DIR=.next-integrated npm run build` so a running baseline `.next` remains intact. R4 passes; `node --test tests/root-entry.test.mjs` then passes the actual compiled HTTP root/query/RSC redirect and destination test.
+- External real Auth.js/BFF account checks passed37 unique assertions; local prepared two-owner canon/media/bundle flow passed55. AWS prepared flow passed61 checks/101requests, with independent usage0/unchanged allowance and6 exact-version S3 asset hashes verified.
+- Cold hydration passed foreign-owner404/owner200 and restored the same787 bytes/SHA with unchanged S3 reference; unsigned exact-version HEAD403. The original file is retained.
+- Root-entry HTTP redirect repair passes compiled and live browser sign-in/reload checks with no fresh warnings/errors. One controlled PixelBin image reroll and ordinary live-mode acceptance pass. Manual prompt overrides must be reapplied after API restart.
+- Completed paid scope: one PixelBin nanoBanana_generate image operation,1 returned credit, USDnull, PNG896×1152/1,587,128bytes;8 S3 asset hashes match, prior7 unchanged. Text/canon/keyframes were prepared mocks; no paid text/video/full-QC proof.
+- Root alone performed in-app browser checks and the controlled paid trigger. Acceptance is complete; this does not authorize another provider call. Never turn a recovery button, refresh, fixture or retry loop into an automatic paid check.

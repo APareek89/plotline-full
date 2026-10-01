@@ -43,7 +43,7 @@ from app.seats import SeatConfigError, SeatSpec
 from app.seats import resolve as resolve_seats
 from app.seats import slugs as seat_slugs
 from app.agents.runner import AgentHardFail, _cited_ids, current_thread, run_agent
-from app.media import MediaError, estimate_cost, generate, stitch
+from app.media import MediaError, estimate_cost, generate, stitch, planned_model
 from app.graph import RuminationDeps, RuminationState, build_rumination_graph
 from app.rag_client import RagUnavailable, rag
 from app.schemas import (
@@ -158,8 +158,12 @@ def _ws(thread_id: str) -> dict[str, Any]:
     """Per-thread driver state. `prompts` deliberately ALIASES the Creative
     Studio workspace map so the existing POST /api/threads/{id}/prompts/{slot}
     route edits campaign prompts too — one verbatim-prompt path, both studios."""
+    from app.threadkit import _require_thread
+    _require_thread(thread_id)
     ws = _WORKSPACES.get(thread_id)
     if ws is None:
+        if len(_WORKSPACES) >= 4000:
+            raise ValueError("Workspace capacity reached")
         ws = {
             "campaign_id": None, "sub_mode": None,
             "options": {}, "verdicts": {}, "option_order": [], "killed": set(),
@@ -245,6 +249,45 @@ def _rehydrate(thread_id: str, ws: dict[str, Any]) -> None:
         ws["variant_group_id"] = store.new_id("vgrp")
 
 
+_RECOVERABLE_JOBS = {"_intake_turn", "_brief_turn", "_options_turn", "_board_turn", "_script_turn",
+                     "_canon_turn", "_keyframes_turn", "_resheet_turn", "_confirm_turn", "_assemble_turn",
+                     "_templates_turn", "_after_templates", "_refine_turn", "_generate_turn", "_reroll_turn", "_qc_turn"}
+
+
+def _job_descriptor(name: str, args: Any, thread: dict) -> Optional[dict]:
+    def primitive(value, depth=0):
+        if depth > 3: return False
+        if value is None or type(value) in (bool,int,float): return True
+        if isinstance(value,str):
+            return len(value)<=16000 and "X-Amz-" not in value and "X-Goog-" not in value
+        return isinstance(value,(list,tuple)) and len(value)<=64 and all(primitive(x,depth+1) for x in value)
+    if name not in _RECOVERABLE_JOBS or not isinstance(args,(list,tuple)) or not primitive(args): return None
+    # IDs come only from the server's owning thread, never from the Retry body.
+    expected = [thread["series_id"],thread["id"]] if name=="_options_turn" else [thread["id"],thread["series_id"]]
+    if name=="_reroll_turn": expected=[thread["id"]]
+    if list(args[:len(expected)])!=expected: return None
+    record={"operation":name,"args":list(args)}
+    return record if len(json.dumps(record))<=32768 else None
+
+
+def recovery_job(thread: dict) -> Optional[tuple]:
+    saved=store.load_checkpoint(thread["id"],"_last_job")
+    if saved and isinstance(saved,dict):
+        valid=_job_descriptor(saved.get("operation"),saved.get("args"),thread)
+        if valid: return globals()[valid["operation"]],tuple(valid["args"])
+    # Compatibility for the pre-checkpoint preview failure: only explicit Retry
+    # of its brief, never automatic recovery or a media resubmission.
+    status=store.last_job_status(thread["id"])
+    if thread.get("stage")=="brief" and status and status["status"] in ("failed","running","interrupted"):
+        return _brief_turn,(thread["id"],thread["series_id"])
+    return None
+
+
+_job_slots = threading.BoundedSemaphore(4)
+_owner_jobs: dict[str, int] = {}
+_owner_jobs_lock = threading.Lock()
+
+
 def _spawn(thread_id: str, fn: Callable[..., None], *args: Any) -> None:
     """Long work off the request thread + a real target for the Retry action
     on the error card (§04: one Retry, never a stack trace).
@@ -253,21 +296,73 @@ def _spawn(thread_id: str, fn: Callable[..., None], *args: Any) -> None:
     render of the same slots and bill for both, so the placeholder step is
     claimed under the lock BEFORE the thread starts; every spawned turn pops it
     in its own finally."""
+    from app.execution import active_session, execution_scope, for_thread
+    actor = for_thread(thread_id)
+    if not active_session(actor):
+        raise ValueError("Session expired")
     with _thread_lock(thread_id):
         busy = _working.get(thread_id)
         if busy:
             _say(thread_id, f"Still working — {busy}. I'll post it here the moment it lands.")
             return
-        _working[thread_id] = "starting the next step"
-        _ws(thread_id)["retry"] = (fn, args)
+        with _owner_jobs_lock:
+            if _owner_jobs.get(actor.owner_id, 0) >= 2 or not _job_slots.acquire(blocking=False):
+                _say(thread_id, "The studio is busy.", question="Try this step again in a moment.")
+                return
+            _owner_jobs[actor.owner_id] = _owner_jobs.get(actor.owner_id, 0) + 1
+        def release_slot():
+            _working.pop(thread_id, None)
+            with _owner_jobs_lock:
+                remaining = _owner_jobs.get(actor.owner_id, 1) - 1
+                if remaining:
+                    _owner_jobs[actor.owner_id] = remaining
+                else:
+                    _owner_jobs.pop(actor.owner_id, None)
+            _job_slots.release()
+
+        try:
+            thread = store.get_thread(thread_id)
+            descriptor = _job_descriptor(fn.__name__, args, thread)
+            if descriptor:
+                store.save_checkpoint(thread_id, "_last_job", descriptor)
+            job_id = store.create_run(actor.campaign_id, "job:" + thread_id)
+            _working[thread_id] = "starting the next step"
+            _ws(thread_id)["retry"] = (fn, args)
+        except BaseException:
+            release_slot()
+            raise
 
         def _run() -> None:
             # tag every agent run started by this turn with its thread, so the
             # observability view can group nodes by conversation
-            current_thread.set(thread_id)
-            fn(*args)
+            token = current_thread.set(thread_id)
+            status = "interrupted"
+            try:
+                with execution_scope(actor):
+                    # Session or campaign may have changed after the HTTP reply.
+                    if not active_session(actor) or not store.get_thread(thread_id):
+                        return
+                    fn(*args)
+                    status = "finished"
+            except BaseException:
+                status = "failed"
+                logger.error("background job failed on thread %s", thread_id)
+            finally:
+                try:
+                    with execution_scope(actor):
+                        store.finish_run(job_id, status)
+                finally:
+                    current_thread.reset(token)
+                    release_slot()
 
-        threading.Thread(target=_run, daemon=True).start()
+        try:
+            threading.Thread(target=_run, daemon=True).start()
+        except BaseException:
+            try:
+                store.finish_run(job_id, "failed", "worker_start_failed")
+            finally:
+                release_slot()
+            raise
 
 
 # ------------------------------------------------------------ step 0 + 1-2 --
@@ -430,7 +525,7 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
     ws["campaign_id"] = campaign_id
 
     if event == "retry":
-        job = ws.get("retry")
+        job = ws.get("retry") or recovery_job(thread)
         if job:
             # Resume rather than restart. Every stage that already succeeded is
             # served from its checkpoint, so a retry after a transient failure
@@ -932,7 +1027,8 @@ def _autofill_brand(campaign_id: str, context: CampaignContext) -> CampaignConte
 
 def _progress_turn(thread_id: str, context: CampaignContext,
                    before: Optional[CampaignContext] = None,
-                   conversational: bool = False) -> None:
+                   conversational: bool = False,
+                   allow_assume: bool = True) -> None:
     """One progress card + at most ONE question for the next missing field.
 
     The text names WHAT was just filed rather than repeating "Filed." every
@@ -970,7 +1066,7 @@ def _progress_turn(thread_id: str, context: CampaignContext,
              question="Start the rumination — evidence, options, council review?",
              note=("Assumed — correct any of these at the brief: " + " · ".join(notes[:4]))
                   if notes else None)
-    elif _ws(thread_id).get("intake_asks", 0) >= MAX_INTAKE_ASKS:
+    elif allow_assume and _ws(thread_id).get("intake_asks", 0) >= MAX_INTAKE_ASKS:
         # Stop interrogating and MOVE. An agent that asks a fourth question is
         # doing the user's job for them badly; the brief gate is a real
         # approval surface, so the cheapest way to be wrong is to state an
@@ -1055,11 +1151,10 @@ def _assume_and_proceed(thread_id: str, campaign_id: str, context: CampaignConte
     notes = list(filled.assumptions or [])
     store.log_artifact_activity(thread_id, "intake", "refined",
                                 f"assumed: {'; '.join(notes)[:200]}" if notes else "assumed the gaps")
-    _say(thread_id,
-         "I filled the gaps so we can get moving — correct anything at the brief.",
-         [_progress_artifact(filled, actions=_actions(("begin", "Start", "primary")))],
-         question="Start the rumination — evidence, options, council review?",
-         note=("Assumed: " + " · ".join(notes[:4])) if notes else None)
+    # An assume response is still untrusted structured output: it may remain
+    # incomplete or contain candidate claims requiring the user's permission.
+    # Reuse the normal gate, without recursively asking this agent to assume.
+    _progress_turn(thread_id, filled, before=context, allow_assume=False)
 
 
 def _claims_awaiting_confirmation(context: CampaignContext) -> list[str]:
@@ -2098,6 +2193,16 @@ def _diff(previous: dict[str, Any], updated: dict[str, Any], target: str) -> dic
 # --------------------------------------- step 7: model confirm + variants ---
 
 
+def _sample_media() -> bool:
+    from app.execution import is_cached
+    return bool(config.MOCK_MEDIA or is_cached())
+
+
+def _media_billing_note() -> str:
+    return ("Sample media; no provider call or charge." if _sample_media() else
+            "Media uses a limited operation allowance. Provider credits are recorded when returned; USD conversion is unverified.")
+
+
 def _confirm_turn(thread_id: str, campaign_id: str) -> None:
     """The card that always precedes generation: model, one-line reason, cost,
     the disabled-settings note, and the single-vs-variants question."""
@@ -2119,28 +2224,27 @@ def _confirm_turn(thread_id: str, campaign_id: str) -> None:
         ws["variant_specs"] = [s.model_dump(mode="json") for s in specs]
 
         confirm = ModelConfirm(
-            recommended_model=(config.MEDIA_MODELS["video"] if ctype == "video"
-                               else config.MEDIA_MODELS["image_final"]),
+            recommended_model=planned_model("video" if ctype == "video" else "image"),
             reason=("Veo 3.1 Fast: image-to-video off a locked keyframe is what keeps the product identical shot to shot."
                     if ctype == "video"
-                    else "nano-banana-2: holds product detail and on-frame text at ad quality, at the lowest cost per frame."),
+                    else "Configured image model for product detail and on-frame text; review the output before delivery."),
             cost_usd=round(base, 2),
             variants_proposed=specs,  # settings_note stays the schema default, verbatim
         )
-        actions = [("generate_single", f"Generate 1 — ${base:.2f}", "primary")]
+        actions = [("generate_single", "Generate 1" + (" sample" if _sample_media() else ""), "primary")]
         if ctype == "video":
             # Draft-first is an invariant on video; the contract's action list
             # doesn't carry it, so it rides as a fourth, clearly-labeled action.
-            actions.append(("generate_draft", f"Draft {detail['shots'][0]['slot']} only — ${_estimate({**detail, 'shots': detail['shots'][:1]}, ratios):.2f}", "secondary"))
+            actions.append(("generate_draft", f"Draft {detail['shots'][0]['slot']} only", "secondary"))
         # only counts we can actually fill with a distinct delta are offered —
         # a button for a variant _apply_variant can't deliver sells a clone.
-        actions += [(f"generate_variants_{n}", f"{n} variants — ${n * base:.2f}", "secondary")
+        actions += [(f"generate_variants_{n}", f"{n} variants", "secondary")
                     for n in range(2, len(specs) + 1)]
 
         prompts = _prompt_artifacts(context, ws, detail, ratios)
         _say(
             thread_id,
-            f"Editable prompts, model and cost before anything renders — {len(detail['shots'])} × {'/'.join(ratios)}.",
+            f"Review the prompts and model before rendering — {len(detail['shots'])} × {'/'.join(ratios)}. " + _media_billing_note(),
             prompts + [ArtifactEnvelope(
                 type="model_confirm", id="confirm", title="Confirm the render",
                 payload={
@@ -2148,7 +2252,8 @@ def _confirm_turn(thread_id: str, campaign_id: str) -> None:
                     "ratios": ratios,
                     "cost_single": round(base, 2),
                     **{f"cost_variants_{n}": round(n * base, 2) for n in range(2, len(specs) + 1)},
-                    "credits_single": round(base / CREDIT_USD, 1),
+                    "credits_single": 0.0 if _sample_media() else None,
+                    "billing_status": "sample" if _sample_media() else "usd_unverified",
                     "draft_first_offer": ctype == "video",
                     "locks": _locks_note(context, ws.get("template")),
                 },
@@ -2249,7 +2354,7 @@ def _prompt_artifacts(context: CampaignContext, ws: dict[str, Any], detail: dict
             key_slot = f"{slot}_key" if is_video else slot
             still = ws["prompts"].get(key_slot) or _visual_prompt(context, ws, detail, shot)
             ws["prompts"][key_slot] = still
-            out.append(_prompt_artifact(key_slot, config.MEDIA_MODELS["image_final"], still,
+            out.append(_prompt_artifact(key_slot, planned_model("image"), still,
                                         estimate_cost("image", tier="final"), ratio, locks,
                                         "keyframe" if is_video else "frame"))
             if not is_video:
@@ -2257,7 +2362,7 @@ def _prompt_artifacts(context: CampaignContext, ws: dict[str, Any], detail: dict
             motion = ws["prompts"].get(slot) or _motion_prompt(shot)
             ws["prompts"][slot] = motion
             out.append(_prompt_artifact(
-                slot, config.MEDIA_MODELS["video"], motion,
+                slot, planned_model("video"), motion,
                 estimate_cost("video", duration_s=float(shot.get("duration_s") or 4.0)),
                 ratio, locks, "clip"))
     return out
@@ -2321,12 +2426,12 @@ def _generate_turn(thread_id: str, campaign_id: str, variant_count: int, draft_o
             store.set_thread_stage(thread_id, "creative")
             return
         artifacts = [_creative_artifact(ws["items"], ws.get("variant_group_id"))]
-        message = "Rendered — every asset carries its prompt, model and cost."
+        message = "Rendered — every asset carries its prompt and model. " + _media_billing_note()
         if draft_only:
             message = "Draft render only — one shot, so you see the look before the full spend."
             artifacts.append(ArtifactEnvelope(
                 type="model_confirm", id="confirm_rest", title="Generate the rest",
-                payload={"confirm": {"recommended_model": config.MEDIA_MODELS["video"],
+                payload={"confirm": {"recommended_model": planned_model("video"),
                                      "reason": "same model, remaining shots",
                                      "cost_usd": round(_estimate(detail, ratios) - _estimate({**detail, "shots": detail["shots"][:1]}, ratios), 2),
                                      "settings_note": ModelConfirm.model_fields["settings_note"].default,
@@ -2365,10 +2470,14 @@ def _seed_url(asset_id: str, asset: dict[str, Any]) -> Optional[str]:
     """A url a GENERATOR can fetch for this asset. Same rule as canon: the
     provider's own url is the real one; under MOCK_MEDIA the local path stands
     in so the rehearsal exercises the same wiring."""
-    url = (asset.get("params") or {}).get("url")
-    if not url and config.MOCK_MEDIA:
-        url = _asset_url(asset_id)
-    return url
+    from app.execution import fixture_mode, is_cached, require_execution
+    if config.MOCK_MEDIA or is_cached():
+        return _asset_url(asset_id)
+    if not fixture_mode():
+        from app.media_storage import signed_reference
+        ref = json.loads(asset["storage_ref"]) if asset.get("storage_ref") else None
+        return signed_reference(require_execution().owner_id, ref) if ref else None
+    return (asset.get("params") or {}).get("url")
 
 
 def _render_slot(thread_id: str, context: CampaignContext, ws: dict[str, Any],
@@ -2397,7 +2506,7 @@ def _render_slot(thread_id: str, context: CampaignContext, ws: dict[str, Any],
     if approved:
         frame_id = approved["asset_id"]
         asset = approved["asset"]
-        frame = {"path": asset["path"], "url": _seed_url(frame_id, asset),
+        frame = {"path": str(store.file_path(asset, "assets")), "url": _seed_url(frame_id, asset),
                  "kind": asset["kind"], "cost": 0.0,
                  "model": (asset.get("params") or {}).get("model"), "seed": None}
         _working[thread_id] = f"using the approved keyframe for {slot}"
@@ -2432,7 +2541,7 @@ def _render_slot(thread_id: str, context: CampaignContext, ws: dict[str, Any],
     _working[thread_id] = f"animating {slot}"
     try:
         clip = generate("video", motion, ratio=ratio, duration_s=float(shot.get("duration_s") or 4.0),
-                        image_urls=[frame["url"]] if frame.get("url") else [])
+                        image_urls=[_seed_url(frame_id, store.get_asset(frame_id) or {})])
     except MediaError:
         # The keyframe is already paid for. Keep it as a real (still) item so the
         # spend stays visible and a resume re-animates it instead of re-buying it.
@@ -2545,12 +2654,14 @@ def _locks_note(context: CampaignContext, template: Optional[TemplateRef]) -> di
 def _params(context: CampaignContext, ws: dict[str, Any], prompt: str, out: dict[str, Any],
             ratio: str, variant_id: Optional[str], source_slot: str) -> dict[str, Any]:
     return {
-        "model": out["model"], "prompt": prompt, "ratio": ratio, "seed": out.get("seed"),
+        "model": out["model"], "provider": out.get("provider"), "prompt": prompt, "ratio": ratio, "seed": out.get("seed"),
         "variant_id": variant_id, "source_slot": source_slot,
         "product_pack": list(context.product.image_upload_ids) if context.product else [],
         "style_ref": (ws["template"].id if ws.get("template") else None),
         "reference_slot": (ws["reference"]["slot"] if ws.get("reference") else None),
         "mock": out.get("mock", False),
+        "consumed_credits": out.get("consumed_credits"), "provider_job_id": out.get("provider_job_id"),
+        "cost_is_estimate": out.get("cost_is_estimate", False),
     }
 
 
@@ -2561,7 +2672,7 @@ def _creative_artifact(items: list[dict[str, Any]],
         # a re-roll is a full paid render (on video, the priciest one on the
         # thread) — the price rides the button, like every other spend.
         actions.append((f"reroll_{item['slot']}",
-                        f"Re-roll {item['slot']} — ${_reroll_estimate(item):.2f}", "secondary"))
+                        f"Re-roll {item['slot']}", "secondary"))
         actions.append((f"use_as_reference_{item['slot']}", f"Use {item['slot']} as reference", "secondary"))
     return ArtifactEnvelope(
         type="creative_set", id="creative", title=f"Creative set · {len(items)} assets",
@@ -2627,7 +2738,7 @@ def _reroll_turn(thread_id: str, slot: str, note: Optional[str]) -> None:
             ws["prompts"][slot] = motion
             clip = generate("video", motion, ratio=item["ratio"],
                             duration_s=float(source.get("duration_s") or 4.0),
-                            image_urls=[frame["url"]] if frame.get("url") else [])
+                            image_urls=[_seed_url(frame_id, store.get_asset(frame_id) or {})])
             asset_id = store.add_asset(thread_id, slot, clip.get("kind", "video"), clip["path"],
                                        {**_params(context, ws, motion, clip, item["ratio"],
                                                   item["variant_id"], source["slot"]),
@@ -2729,6 +2840,9 @@ def _assemble_turn(thread_id: str, campaign_id: str) -> None:
                     cover_url=_asset_url(item["cover_asset_id"]) if item.get("cover_asset_id") else None,
                     params={"model": asset["params"].get("model"), "prompt_id": item["slot"],
                             "prompt": asset["params"].get("prompt"), "seed": asset["params"].get("seed"),
+                            "provider": asset["params"].get("provider"),
+                            "consumed_credits": asset["params"].get("consumed_credits"),
+                            "provider_job_id": asset["params"].get("provider_job_id"),
                             "cost": asset["cost"], "variant_id": variant_id},
                 ))
             if not media:
@@ -2749,7 +2863,9 @@ def _assemble_turn(thread_id: str, campaign_id: str) -> None:
                 ratios=ratios,
                 naming=_naming(context, option_id, variant_id, ratios[0]),
                 media=media,
-                total_cost_credits=round(spend / CREDIT_USD, 1),
+                total_cost_credits=0.0 if _sample_media() else None,
+                estimated_cost_usd=round(spend, 4),
+                billing_status="sample" if _sample_media() else "usd_unverified",
                 status="ready",
                 created_at=time.time(),
             ).model_dump(mode="json")
@@ -2763,7 +2879,7 @@ def _assemble_turn(thread_id: str, campaign_id: str) -> None:
                 actions=_actions(("mark_live", "Mark live", "primary")),
             ))
             store.log_artifact_activity(thread_id, card_id, "proposed",
-                                        f"{len(media)} assets · {card['total_cost_credits']} credits")
+                                        f"{len(media)} assets · " + _media_billing_note())
 
         if not cards:
             _say(thread_id, "None of the accepted slots still have assets behind them.")
@@ -2804,7 +2920,7 @@ def _stitch_variant(thread_id: str, vdetail: dict[str, Any], accepted: list[dict
         if item.get("kind") != "video":
             continue
         asset = store.get_asset(item["asset_id"])
-        clips.append({"slot": item["slot"], "path": (asset or {}).get("path")})
+        clips.append({"slot": item["slot"], "path": str(store.file_path(asset, "assets")) if asset else None})
     if len(clips) < 2:
         return None      # one clip is already the film
 
@@ -3066,6 +3182,11 @@ def _require(ws: dict[str, Any], stage: str) -> None:
 def _fail(thread_id: str, summary: str, detail: str) -> None:
     """§04: what broke in plain words + ONE Retry action — never a stack trace
     in the card (the trace goes to the server log)."""
+    from app.execution import fixture_mode
+    if not fixture_mode():
+        logger.error("campaign stage failed on thread %s", thread_id)
+        summary = "This step did not finish. Saved work is retained; retry only after checking the usage record if a provider request was sent."
+        detail = ""
     if detail:
         logger.error("campaign thread %s: %s\n%s", thread_id, summary, detail)
     _say(thread_id, "Something broke — honestly.", [_escalation(summary, summary)])
@@ -3075,7 +3196,7 @@ def _media_fail(thread_id: str, exc: MediaError, prompt: Optional[str], slot: Op
     if exc.policy:
         _say(
             thread_id,
-            "The model declined this prompt — nothing was charged.",
+            "The model declined this prompt — any recorded provider usage is retained.",
             [ArtifactEnvelope(
                 type="asset_prompt", id=f"declined_{slot or 'prompt'}",
                 title=f"Declined prompt · {slot or 'unknown slot'}",
@@ -3087,7 +3208,7 @@ def _media_fail(thread_id: str, exc: MediaError, prompt: Optional[str], slot: Op
             question="Edit the prompt and retry — what should it say instead?",
         )
         return
-    _fail(thread_id, f"The provider failed and you weren't charged: {exc}", "")
+    _fail(thread_id, "The provider request did not finish. Its charge may be unknown; saved assets and the usage record are retained.", "")
 
 
 def _partial_fail(thread_id: str, exc: MediaError, done: list[dict[str, Any]]) -> None:
@@ -3107,10 +3228,11 @@ def _partial_fail(thread_id: str, exc: MediaError, done: list[dict[str, Any]]) -
         [_creative_artifact(ws["items"], ws.get("variant_group_id")),
          ArtifactEnvelope(
              type="escalation", id="partial",
-             title=f"{len(done)} of the set rendered · ${spent:.2f} already charged",
+             title=f"{len(done)} of the set rendered; usage retained",
              payload={"reason": str(exc)[:300], "rendered_slots": [i["slot"] for i in done],
                       "failed_slot": slot, "spent_usd": spent,
-                      "spent_credits": round(spent / CREDIT_USD, 1),
+                      "spent_credits": 0.0 if _sample_media() else None,
+                      "billing_status": "sample" if _sample_media() else "usd_unverified",
                       "below_threshold_count": 0, "total_concepts": 1,
                       "choices": ["accept_provisional"]},
              # one action only: Retry would re-enter the same turn, which now
@@ -3123,7 +3245,7 @@ def _partial_fail(thread_id: str, exc: MediaError, done: list[dict[str, Any]]) -
     store.set_thread_stage(thread_id, "creative")
     store.log_artifact_activity(
         thread_id, "creative", "downgraded",
-        f"partial render: {len(done)} rendered (${spent:.2f} charged), stopped on {slot} — {exc}"[:500])
+        f"partial render: {len(done)} rendered (usage retained), stopped on {slot} — {exc}"[:500])
 
 
 # =============================================================================
@@ -3254,8 +3376,7 @@ def _board_turn(thread_id: str, campaign_id: str) -> None:
         # cannot leave a stale detail behind.
         ws["detail"] = _detail_from_board(board, ws.get("hook_rack"))
         _say(thread_id,
-             f"The board is the last free gate — {len(board.shots)} shot(s), "
-             f"{board.est_total_usd:.2f} USD after this.",
+             f"Review the board before rendering — {len(board.shots)} shot(s). " + _media_billing_note(),
              [ArtifactEnvelope(
                  type="campaign_detail", id="board",
                  title=f"Shot board · v{board.version}",
@@ -3270,7 +3391,7 @@ def _board_turn(thread_id: str, campaign_id: str) -> None:
              question="Approve the board, or name a row to change?")
         store.log_artifact_activity(thread_id, "board", "proposed",
                                     f"v{board.version} · {len(board.shots)} shots · "
-                                    f"${board.est_total_usd:.2f}")
+                                    f"illustrative estimate ${board.est_total_usd:.2f}; conversion unverified")
         _stage_done(thread_id, campaign_id, "detail",
                     creative_type=board.creative_type)
         if not _pauses_at(campaign_id, "detail"):
@@ -3378,9 +3499,8 @@ def _canon_turn(thread_id: str, campaign_id: str) -> None:
              # seen anything; the owner's rule is assume the cheap option, state
              # it, and let the gate correct it in one click.
              note=(_canon_summary(sheets)
-                   + f" Rendered at {config.IMAGE_RESOLUTION_DEFAULT} — enough to approve "
-                     f"from; 'Re-render sharper' redoes them at "
-                     f"{config.IMAGE_RESOLUTION_SHARP} and charges again. Check every panel "
+                   + (" Sample placeholders do not demonstrate production resolution." if _sample_media() else
+                     f" Requested {config.IMAGE_RESOLUTION_DEFAULT}; 'Re-render sharper' requests {config.IMAGE_RESOLUTION_SHARP} and submits a new operation.") + " Check every panel "
                      "is really there before approving — nothing here inspects the image.")
              .strip())
         store.log_artifact_activity(thread_id, "canon", "proposed",
@@ -3423,7 +3543,7 @@ def _resheet_turn(thread_id: str, campaign_id: str) -> None:
         store.log_artifact_activity(thread_id, "canon", "refined",
                                     f"re-rendered at {config.IMAGE_RESOLUTION_SHARP}")
         _say(thread_id,
-             f"Re-rendered the canon sheets at {config.IMAGE_RESOLUTION_SHARP}.",
+             "Re-rendered the canon sheets. " + _media_billing_note(),
              [ArtifactEnvelope(
                  type="canon_sheet", id="canon", title="Canon sheets",
                  payload={"sheets": ws["canon"]},
@@ -3431,7 +3551,7 @@ def _resheet_turn(thread_id: str, campaign_id: str) -> None:
                                   ("skip_canon", "Skip sheets", "secondary")))],
              question="Approve these sheets, or skip them and accept the drift?",
              note=(_canon_summary(sheets)
-                   + f" Was {prev}; this render was paid for on top of the first.").strip())
+                   + (" Sample placeholder output." if _sample_media() else f" Requested {config.IMAGE_RESOLUTION_SHARP}; the earlier requested setting was {prev}.")).strip())
     except MediaError as exc:
         _media_fail(thread_id, exc, None, "canon")
     except Exception as exc:
@@ -3490,6 +3610,7 @@ def _keyframes_turn(thread_id: str, campaign_id: str) -> None:
                 # ran must not render as a check that succeeded.
                 "checks": {c: "na" for c in KEYFRAME_CHECKS},
                 "repairs": [], "approved": False, "cost_usd": asset["cost"],
+                "provider": asset.get("provider"), "model": asset.get("model"),
             })
         board_obj = KeyframeBoard.model_validate({"frames": frames})
         validate_keyframe_board(board_obj, board_slots=[s["slot"] for s in shots])
@@ -3565,9 +3686,10 @@ def _canon_reference_urls(
         if not sheet:
             unusable.append(f"{canon_id} (no sheet — canon was skipped or the id is unknown)")
             continue
-        url = sheet.get("sheet_url")
-        if not url and config.MOCK_MEDIA and sheet.get("sheet_asset_id"):
-            url = _asset_url(sheet["sheet_asset_id"])
+        from app.execution import fixture_mode
+        asset_id = sheet.get("sheet_asset_id")
+        asset = store.get_asset(asset_id) if asset_id else None
+        url = _seed_url(asset_id, asset) if asset else sheet.get("sheet_url") if fixture_mode() else None
         if url:
             pairs.append((canon_id, url))
         else:
@@ -3596,13 +3718,13 @@ def _render_keyframe(thread_id: str, shot: dict[str, Any], ratio: str,
     dropped = unusable + [d["why"] for d in (frame.get("dropped_refs") or [])]
     asset_id = store.add_asset(
         thread_id, f"keyframe_{shot['slot']}", frame.get("kind", "image"), frame["path"],
-        {"model": frame["model"], "prompt": shot["keyframe_prompt"], "ratio": ratio,
+        {"provider": frame.get("provider"), "consumed_credits": frame.get("consumed_credits"), "provider_job_id": frame.get("provider_job_id"), "model": frame["model"], "prompt": shot["keyframe_prompt"], "ratio": ratio,
          "shot_slot": shot["slot"], "refs": used, "refs_dropped": dropped,
          "url": frame.get("url")},
         frame["cost"])
     store.log_generation(thread_id, asset_id, "generate", prompt=shot["keyframe_prompt"],
                          model=frame["model"], seed=str(frame.get("seed")), cost=frame["cost"])
-    return {"asset_id": asset_id, "cost": frame["cost"], "refs_used": used, "dropped": dropped}
+    return {"asset_id": asset_id, "cost": frame["cost"], "refs_used": used, "dropped": dropped, "provider": frame.get("provider"), "model": frame.get("model")}
 
 
 def _qc_turn(thread_id: str, campaign_id: str) -> None:
@@ -3763,20 +3885,11 @@ _SHEET_STYLE: dict[str, str] = {
 
 
 def _canon_summary(sheets: list) -> str:
-    """What the sheets cost and what they would have cost one-render-per-view.
-
-    Said at the gate because the saving is the reason the sheet exists and a
-    number the user never sees is a number they cannot weigh. Both figures come
-    from `config.MEDIA_COST_USD`, never from the model.
-    """
     rendered = [s for s in sheets if s.sheet_asset_id]
     if not rendered:
         return ""
-    each = estimate_cost("image", tier=config.CANON_SHEET_TIER)
     views = sum(len(s.required_views()) for s in rendered)
-    return (f"One labelled sheet each, {views} view(s) in total, "
-            f"${each * len(rendered):.2f} — a render per view would have been "
-            f"${each * views:.2f}, and the views would only agree by luck.")
+    return f"One labelled sheet each, {views} composed view(s) in total. " + _media_billing_note()
 
 
 def _canon_anchor_prompt(sheet: "CanonSheet") -> str:
@@ -3896,7 +4009,7 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
             anchor_id = store.add_asset(
                 thread_id, f"canon_{sheet.id}_anchor", anchor.get("kind", "image"),
                 anchor["path"],
-                {"model": anchor["model"], "prompt": anchor_prompt, "canon_id": sheet.id,
+                {"provider": anchor.get("provider"), "consumed_credits": anchor.get("consumed_credits"), "provider_job_id": anchor.get("provider_job_id"), "model": anchor["model"], "prompt": anchor_prompt, "canon_id": sheet.id,
                  "ratio": "1:1", "resolution": want, "role": "anchor",
                  "url": anchor.get("url")},
                 anchor["cost"])
@@ -3911,7 +4024,7 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
                              image_urls=[anchor_url] if anchor_url else [])
             asset_id = store.add_asset(
                 thread_id, f"canon_{sheet.id}", frame.get("kind", "image"), frame["path"],
-                {"model": frame["model"], "prompt": prompt, "canon_id": sheet.id,
+                {"provider": frame.get("provider"), "consumed_credits": frame.get("consumed_credits"), "provider_job_id": frame.get("provider_job_id"), "model": frame["model"], "prompt": prompt, "canon_id": sheet.id,
                  "views": list(views), "resolution": want, "ratio": "16:9",
                  # The PROVIDER url, kept because a local /api/assets path is not
                  # fetchable by a generator's servers — Stage 3 needs this one.
@@ -3925,6 +4038,7 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
             sheet.asset_ids = [asset_id, anchor_id]
             sheet.anchor_asset_id = anchor_id
             sheet.sheet_asset_id = asset_id
+            sheet.provider, sheet.model = frame.get("provider"), frame.get("model")
             sheet.sheet_url = frame.get("url")
             # Composed, not detected. The canon gate is where a human confirms
             # the panels are really in there; nothing here inspects the pixels.

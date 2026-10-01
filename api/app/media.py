@@ -21,6 +21,9 @@ runs, and neither provider is contacted.
 from __future__ import annotations
 
 import hashlib
+import uuid
+import html
+import re
 import json
 import logging
 import math
@@ -44,8 +47,9 @@ class MediaError(RuntimeError):
     """Provider failure after retry, or policy rejection — surfaced honestly,
     never silently swallowed. `policy=True` → the model declined the prompt."""
 
-    def __init__(self, message: str, policy: bool = False):
+    def __init__(self, message: str, policy: bool = False, safe_to_fallback: bool = False):
         self.policy = policy
+        self.safe_to_fallback = safe_to_fallback
         super().__init__(message)
 
 
@@ -63,53 +67,44 @@ def estimate_cost(kind: str, *, duration_s: float = 0, chars: int = 0, tier: str
 
 def _headers() -> dict[str, str]:
     if not config.FAL_KEY:
-        raise MediaError("FAL_KEY is not set — real media generation unavailable (set MOCK_MEDIA=1 to develop without it)")
+        raise MediaError("FAL_KEY is not configured", safe_to_fallback=True)
     return {"Authorization": f"Key {config.FAL_KEY}", "Content-Type": "application/json"}
 
 
 def _submit_and_wait(model: str, payload: dict[str, Any], timeout_s: float = 300) -> dict[str, Any]:
-    """One bounded retry on transport/5xx; 4xx (validation/policy) never retried."""
-    last: Optional[Exception] = None
-    for attempt in range(2):
-        try:
-            sub = httpx.post(f"{QUEUE}/{model}", headers=_headers(), json=payload, timeout=30)
-            if sub.status_code == 422:
-                raise MediaError(f"{model} rejected the request: {sub.text[:300]}", policy=True)
-            sub.raise_for_status()
-            job = sub.json()
-            status_url = job.get("status_url") or f"{QUEUE}/{model}/requests/{job['request_id']}/status"
-            response_url = job.get("response_url") or f"{QUEUE}/{model}/requests/{job['request_id']}"
-            started = time.time()
-            while time.time() - started < timeout_s:
-                st = httpx.get(status_url, headers=_headers(), timeout=20).json()
-                status = st.get("status")
-                if status == "COMPLETED":
-                    res = httpx.get(response_url, headers=_headers(), timeout=30)
-                    res.raise_for_status()
-                    return res.json()
-                if status in ("FAILED", "ERROR", "CANCELLED"):
-                    detail = json.dumps(st)[:300]
-                    if "content" in detail.lower() or "policy" in detail.lower() or "safety" in detail.lower():
-                        raise MediaError(f"the model declined this prompt: {detail}", policy=True)
-                    raise MediaError(f"{model} job failed: {detail}")
-                time.sleep(2)
-            raise MediaError(f"{model} timed out after {timeout_s}s")
-        except MediaError:
-            raise
-        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-            last = exc
-            logger.warning("fal %s attempt %d failed (%s) — %s", model, attempt + 1, type(exc).__name__, exc)
-            if attempt == 0:
-                time.sleep(1.5)  # §07: one automatic retry, silent
-    raise MediaError(f"{model} unreachable after retry: {last}")
+    from app import media_transport as transport
+    if not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+){1,8}", model):
+        raise MediaError("invalid provider model")
+    headers = _headers()
+    transport.before_submit(payload)
+    try:
+        sub = transport.request("POST", f"{QUEUE}/{model}", headers=headers, json_body=payload)
+        if sub.status_code in (400, 401, 402, 403, 404, 422, 429):
+            transport.rejected()
+            raise MediaError("fal rejected the request", policy=transport.is_policy(sub),
+                             safe_to_fallback=sub.status_code in (401,402,403,404,429))
+        sub.raise_for_status()
+        job=sub.json();request_id=job.get("request_id");transport.accepted(request_id)
+        # Returned URLs are never used as credential destinations.
+        base=f"{QUEUE}/{model}/requests/{request_id}"
+        deadline=time.monotonic()+min(timeout_s,900)
+        while time.monotonic()<deadline:
+            st=transport.request("GET",base+"/status",headers=headers);st.raise_for_status();status=st.json().get("status")
+            if status=="COMPLETED":
+                result=transport.request("GET",base,headers=headers);result.raise_for_status()
+                data=result.json();transport.completed();return data
+            if status in ("FAILED","ERROR","CANCELLED"):
+                raise MediaError("fal job failed; charge status retained",policy=transport.is_policy(st))
+            time.sleep(2)
+        raise MediaError("fal job timed out; it may still complete and be charged")
+    except MediaError:raise
+    except Exception:raise MediaError("fal completion unknown; it may have been charged") from None
 
 
 def _download(url: str, dest: Path) -> Path:
-    with httpx.stream("GET", url, timeout=120, follow_redirects=True) as r:
-        r.raise_for_status()
-        with dest.open("wb") as fh:
-            for chunk in r.iter_bytes():
-                fh.write(chunk)
+    from app.safe_network import public_get
+    result=public_get(url,max_bytes=64*1024*1024,max_seconds=120,media=True)
+    dest.write_bytes(result.body)
     return dest
 
 
@@ -136,7 +131,7 @@ def _mock_image(prompt: str, ratio: str, dest: Path) -> Path:
             cur = f"{cur} {word}".strip()
     lines.append(cur)
     tspans = "".join(
-        f'<tspan x="{w//2}" dy="{22 if i else 0}">{ln}</tspan>' for i, ln in enumerate(lines[:8])
+        f'<tspan x="{w//2}" dy="{22 if i else 0}">{html.escape(ln)}</tspan>' for i, ln in enumerate(lines[:8])
     )
     dest.write_text(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
@@ -305,7 +300,7 @@ def _generate_fal(
         out = _submit_and_wait(model, payload)
         url = (out.get("images") or [{}])[0].get("url") or out.get("image", {}).get("url")
         if not url:
-            raise MediaError(f"{model} returned no image: {json.dumps(out)[:200]}")
+            raise MediaError("fal returned no image")
     elif kind == "audio":
         model = config.MEDIA_MODELS["tts_draft" if tier == "draft" else "tts_final"]
         payload = {"text": prompt}
@@ -314,7 +309,7 @@ def _generate_fal(
         out = _submit_and_wait(model, payload)
         url = out.get("audio", {}).get("url") or out.get("audio_url", {}).get("url") or out.get("audio_file", {}).get("url")
         if not url:
-            raise MediaError(f"{model} returned no audio: {json.dumps(out)[:200]}")
+            raise MediaError("fal returned no audio")
     else:
         model = config.MEDIA_MODELS["video"]
         caps = _FAL_VIDEO_CAPS.get(model)
@@ -347,7 +342,7 @@ def _generate_fal(
         out = _submit_and_wait(model, payload, timeout_s=600)
         url = out.get("video", {}).get("url")
         if not url:
-            raise MediaError(f"{model} returned no video: {json.dumps(out)[:200]}")
+            raise MediaError("fal returned no video")
     return url, f"fal:{model}", dropped
 
 
@@ -372,7 +367,7 @@ def _generate_pixelbin(
             image_urls=image_urls, resolution=resolution,
         )
     except pixelbin_client.PixelbinError as exc:
-        raise MediaError(str(exc), policy=exc.policy) from exc
+        raise MediaError(str(exc), policy=exc.policy, safe_to_fallback=exc.safe_to_fallback) from exc
     return out["url"], out["model"], []
 
 
@@ -383,9 +378,19 @@ def _provider_order(kind: str) -> list[str]:
     if kind == "audio":
         return ["fal"]
     pref = config.MEDIA_PROVIDER
+    if pref not in ("pixelbin", "fal", "pixelbin_only", "fal_only"):
+        raise MediaError("Unsupported configured media provider")
     if pref.endswith("_only"):
         return [pref[:-5]]
     return ["pixelbin", "fal"] if pref == "pixelbin" else ["fal", "pixelbin"]
+
+
+def planned_model(kind: str, tier: str = "final") -> str:
+    """Configured first-choice target, before any dispatch or fallback."""
+    provider = _provider_order(kind)[0]
+    key = ("tts_draft" if tier == "draft" else "tts_final") if kind == "audio" else config.media_key(kind, tier)
+    models = config.PIXELBIN_MODELS if provider == "pixelbin" else config.MEDIA_MODELS
+    return provider + ":" + models[key]
 
 
 def generate(
@@ -420,8 +425,14 @@ def generate(
     (v3 §5, B3), so the drop is a fact the caller can say out loud, never a
     log line nobody reads.
     """
+    from app.execution import is_cached, owner_directory
+    from app import media_transport
+    from app.media_storage import validate_provider_reference
+    assets = owner_directory("assets")
+    if kind not in ("image", "video", "audio") or len(prompt.encode()) > 20000 or not 0 < duration_s <= 12:
+        raise MediaError("media input limit")
     cost = estimate_cost(kind, duration_s=duration_s, chars=len(prompt), tier=tier)
-    name = f"{kind}_{_slug(prompt + str(seed or 0))}"
+    name = f"{kind}_{_slug(prompt + str(seed or 0))}_{uuid.uuid4().hex[:12]}"
 
     # Trim before the mock branch, not after: the whole interaction contract —
     # what gets sent, what gets dropped, what the user is told — has to be
@@ -435,7 +446,7 @@ def generate(
         for u in over
     ]
 
-    if config.MOCK_MEDIA:
+    if config.MOCK_MEDIA or is_cached():
         import shutil as _sh
 
         out_kind = kind
@@ -443,7 +454,7 @@ def generate(
         if kind == "video" and not _sh.which("ffmpeg"):
             # no ffmpeg (e.g. Render) → honest SVG poster instead of a broken mp4
             out_kind, ext = "image", "svg"
-        dest = config.ASSET_DIR / f"{name}.{ext}"
+        dest = assets / f"{name}.{ext}"
         if out_kind == "image":
             _mock_image(prompt if kind == "image" else f"[video poster — ffmpeg unavailable] {prompt}", ratio, dest)
         elif kind == "audio":
@@ -451,23 +462,28 @@ def generate(
         else:
             _mock_video(prompt, ratio, duration_s, dest)
         logger.info("mock %s generated (%s) — $0.00", kind, dest.name)
-        return {"path": str(dest), "model": "mock", "cost": 0.0, "seed": seed, "mock": True,
+        return {"path": str(dest), "provider": "sample", "model": "mock", "cost": 0.0, "seed": seed, "mock": True,
                 "kind": out_kind, "refs_used": kept, "dropped_refs": dropped,
                 "duration_s": duration_s, "duration_requested_s": duration_s}
 
+    for reference in kept:
+        validate_provider_reference(reference)
     order = _provider_order(kind)
     url = model = ""
     failures: list[str] = []
     for idx, provider in enumerate(order):
         try:
-            if provider == "pixelbin":
-                url, model, by_provider = _generate_pixelbin(
-                    kind, prompt, ratio=ratio, duration_s=duration_s, tier=tier,
-                    image_urls=kept, resolution=resolution)
-            else:
-                url, model, by_provider = _generate_fal(
-                    kind, prompt, ratio=ratio, duration_s=duration_s, tier=tier,
-                    voice=voice, image_urls=kept, seed=seed)
+            key = config.media_key(kind, tier) if kind != "audio" else ("tts_draft" if tier == "draft" else "tts_final")
+            planned_model = config.PIXELBIN_MODELS[key] if provider == "pixelbin" else config.MEDIA_MODELS[key]
+            with media_transport.attempt(provider, planned_model, cost) as media_attempt:
+                if provider == "pixelbin":
+                    url, model, by_provider = _generate_pixelbin(
+                        kind, prompt, ratio=ratio, duration_s=duration_s, tier=tier,
+                        image_urls=kept, resolution=resolution)
+                else:
+                    url, model, by_provider = _generate_fal(
+                        kind, prompt, ratio=ratio, duration_s=duration_s, tier=tier,
+                        voice=voice, image_urls=kept, seed=seed)
             # The provider may refuse references the budget allowed — fal's
             # video model seeds from one URL, its image path from none. That is
             # a SECOND, different drop and it is reported the same way.
@@ -477,7 +493,7 @@ def generate(
         except MediaError as exc:
             # A refused prompt is a real answer about the prompt. Asking a
             # second provider the same question costs money to hear it again.
-            if exc.policy:
+            if exc.policy or not exc.safe_to_fallback:
                 raise
             failures.append(f"{provider}: {exc}")
             if idx == len(order) - 1:
@@ -487,22 +503,22 @@ def generate(
 
     ext = {"image": "png", "video": "mp4", "audio": "mp3"}[kind]
     try:
-        dest = _download(url, config.ASSET_DIR / f"{name}.{ext}")
+        dest = _download(url, assets / f"{name}.{ext}")
     except Exception as exc:
         # The provider has ALREADY generated and billed by this point. Losing
         # the local copy must not also lose the RECORD of the spend, or the
         # money becomes invisible: no asset, no generation_log row, nothing for
         # a cost dispute to point at. One retry first — a 5 MB video over a
         # proxy is the common case — then record the spend and say what
-        # happened, including the URL the render still lives at.
+        # happened without exposing a potentially signed provider URL.
         try:
-            dest = _download(url, config.ASSET_DIR / f"{name}.{ext}")
+            dest = _download(url, assets / f"{name}.{ext}")
         except Exception as second:
             _record_orphan_spend(kind, model, cost, url, prompt)
             raise MediaError(
-                f"{model} generated this {kind} and it was charged (~${cost:.2f}), but the file "
+                f"{model} generated this {kind}; provider usage may be billed, but its USD amount is unknown. The file "
                 f"could not be downloaded after a retry ({type(second).__name__}). The render is "
-                f"still at {url} — the spend is recorded so it is not invisible."
+                f"retained by the provider — the generation and usage receipt are recorded."
             ) from second
 
     # What the file IS, not what was asked for. veo3.1's shortest clip is 4s, so
@@ -517,8 +533,9 @@ def generate(
                        "; ".join(d["why"] for d in dropped))
     logger.info("%s generated via %s — est $%.2f (%d ref%s)", kind, model, cost,
                 len(kept), "" if len(kept) == 1 else "s")
-    return {"path": str(dest), "url": url, "model": model, "cost": cost, "seed": seed,
-            "mock": False, "fallback": bool(failures),
+    return {"path": str(dest), "url": url, "provider": provider, "model": model, "cost": cost, "seed": seed,
+            "mock": False, "fallback": bool(failures), "cost_is_estimate": True,
+            "provider_job_id": media_attempt.job_id, "consumed_credits": media_attempt.consumed_credits,
             "refs_used": kept, "dropped_refs": dropped,
             "duration_s": actual or duration_s,
             "duration_requested_s": duration_s}
@@ -540,10 +557,10 @@ def _record_orphan_spend(kind: str, model: str, cost: float, url: str, prompt: s
             current_thread.get(), None, f"{kind}_orphaned",
             prompt=prompt[:500], model=model, cost=cost,
         )
-        logger.error("orphaned %s spend ~$%.2f via %s — file never downloaded, url=%s",
-                     kind, cost, model, url)
+        logger.error("orphaned %s via %s — usage recorded, USD amount unknown",
+                     kind, model)
     except Exception:  # noqa: BLE001 — logging a loss must never mask the loss
-        logger.exception("could not even record the orphaned %s spend (~$%.2f)", kind, cost)
+        logger.error("could not record orphaned %s generation", kind)
 
 
 # ------------------------------------------------------------------ stitch --

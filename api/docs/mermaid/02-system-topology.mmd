@@ -1,22 +1,29 @@
 %% granularity: master
-%% files: app/main.py app/rag_client.py devrag/server.py app/config.py
+%% files: ../web/app/layout.tsx, ../web/server/bridge.js, app/main.py, app/database.py, app/media_storage.py, app/rag_client.py, devrag/server.py, app/config.py
+%% Implemented service boundaries. AWS activation and scoped live acceptance verified2026-10-01.
 flowchart LR
-    subgraph browser [Browser]
-        WEB["plotline-web · Next.js :3100\nContent Studio · Plans · My Space"]
-    end
-    subgraph api [plotline-api · FastAPI :8600]
-        ROUTES["REST + SSE routes"]
-        ORCH["Orchestrator state machine\ncontext→retrieve→plan→critique→refine→await-approval"]
-        VAL["Server-side validators\n(CCS recompute · citation resolution · diff-check)"]
-        SQL[("SQLite data/plotline.db\nprofile · series · plans · concept_state · performance · runs")]
-    end
-    subgraph rag [RAG service :8787 — frozen contract]
-        STUB["DEV STUB (sample data)\nPOST /search_corpus · /resolve_source_ids\n→ swap: Codex's plotline-rag, same port"]
-    end
-    ANTH["Anthropic API\nsonnet-4-6 / haiku-4-5\n(MOCK_LLM=1 → deterministic mocks)"]
-    WEB -->|"fetch + EventSource"| ROUTES --> ORCH
-    ORCH --> VAL
-    ORCH -->|"retrieval tools ONLY\n(no network tools ever)"| STUB
-    VAL -->|resolve_source_ids| STUB
-    ORCH -->|"tool-use loop"| ANTH
-    ORCH --> SQL
+  WEB["Next.js [FUNCTION]<br/>in: same-origin browser request<br/>out: authenticated BFF call<br/>Campaign Studio, My Campaigns, My Brand"]
+  API["Private FastAPI [FUNCTION]<br/>in: signed owner-bound request<br/>out: campaign state, job or authorized media"]
+  PG["PostgreSQL [DATA]<br/>in: owner-scoped transaction<br/>out: users, sessions, state, nonce and usage rows"]
+  FILES["Private versioned S3 [DATA]<br/>in: owner-tagged immutable file<br/>out: version and SHA-bound object reference"]
+  RAG["Owner upload retrieval [LIBRARY · plotline_rag]<br/>in: private source query<br/>out: scoped source evidence"]
+  SAMPLE["Sample corpus [DATA · devrag]<br/>in: asset, statistic or trend query<br/>out: labelled illustrative fixtures"]
+  PROVIDER["Model adapter [LIBRARY · OpenAI or Anthropic SDK]<br/>in: metered bounded model request<br/>out: result and usage or safe failure"]
+  MEDIA["Media adapter [FUNCTION]<br/>in: approved image, video or audio request<br/>out: Sample or recorded provider provenance"]
+  WEB --> API
+  API --> PG
+  WEB --> PG
+  API --> FILES
+  API --> RAG
+  API --> SAMPLE
+  API --> PROVIDER
+  API --> MEDIA
+  MEDIA --> FILES
+  classDef agent fill:#dbeafe,stroke:#2563eb,color:#0b2a5b;
+  classDef fn fill:#dcfce7,stroke:#16a34a,color:#052e16;
+  classDef dec fill:#f3e8ff,stroke:#9333ea,color:#2a0a4a;
+  classDef term fill:#e5e7eb,stroke:#6b7280,color:#111827;
+  classDef ask fill:#cffafe,stroke:#0891b2,color:#083344;
+  classDef data fill:#ede9fe,stroke:#7c3aed,color:#2a0a4a;
+  class WEB,API,MEDIA fn;
+  class PG,FILES,RAG,SAMPLE,PROVIDER data;

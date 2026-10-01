@@ -19,12 +19,16 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from app import brand_extract, campaign, config, store, threadkit
+from app import auth as portfolio_auth, database
+from app import examples
+from app.execution import fixture_mode, owner_directory, require_execution
 from app import seats as seats_mod
 from app.agents.runner import AgentHardFail
 from app.rag_client import RagUnavailable, rag
 from app.schemas import CreatorContext, UserEvent
 
 app = FastAPI(title="plotline-api", version="0.1.0")
+app.middleware("http")(portfolio_auth.middleware)
 
 
 @app.on_event("startup")
@@ -32,6 +36,9 @@ def _rag_startup_check() -> None:
     """Log the RAG manifest at boot. Non-fatal here — evidence-requiring flows
     re-check via rag.ensure_ready() and fail loudly if the service is down."""
     import logging
+    if not fixture_mode():
+        portfolio_auth.secret()
+        database.ready()
 
     if not config.RAG_ENABLED:
         logging.getLogger("plotline.rag").warning(
@@ -54,6 +61,15 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    if not fixture_mode():
+        database.ready()
+        if config.RAG_ENABLED:
+            try:
+                rag.ensure_ready()
+            except RagUnavailable:
+                raise HTTPException(503, "Required retrieval is unavailable") from None
+        return {"ok": True, "service": "plotline-api", "auth": True,
+                "mock_llm": config.MOCK_LLM, "media_mock": config.MOCK_MEDIA}
     rag_status: dict[str, Any]
     try:
         rag_status = rag.health()
@@ -77,6 +93,11 @@ def health() -> dict[str, Any]:
     }
 
 
+@app.get("/healthz")
+def healthz():
+    return health()
+
+
 # ----------------------------------------------------------------- profile --
 
 
@@ -91,6 +112,36 @@ class ProfileBody(BaseModel):
 @app.get("/api/profile")
 def get_profile() -> dict[str, Any]:
     return store.get_profile()
+
+
+@app.get("/api/examples")
+def prepared_examples():
+    return {"examples": examples.EXAMPLES}
+
+
+class ExampleBody(BaseModel):
+    id: str
+
+
+@app.post("/api/examples")
+def prepare_example(body: ExampleBody):
+    try:
+        return examples.create(body.id)
+    except ValueError:
+        raise HTTPException(404, "Prepared example not found") from None
+
+
+@app.get("/api/usage")
+def owner_usage():
+    actor = require_execution()
+    if fixture_mode():
+        return {"rows": [], "media_allowance": 6, "owner_text_usd_limit": "1.00"}
+    with database.connection(owner_id=actor.owner_id) as conn:
+        rows = conn.execute("""SELECT id,kind,provider,model,status,reserved_usd,actual_usd,consumed_credits,
+          input_tokens,output_tokens,cached_input_tokens,reasoning_output_tokens,created_at
+          FROM usage WHERE owner_id=%s ORDER BY created_at DESC LIMIT 100""", (actor.owner_id,)).fetchall()
+    return {"rows": rows, "media_allowance": 6, "owner_text_usd_limit": os.getenv("PLOTLINE_OWNER_BUDGET_USD", "1.00"),
+            "media_usd_note": "Media operation counts are bounded; a dollar conversion is not verified."}
 
 
 @app.put("/api/profile")
@@ -108,17 +159,35 @@ async def upload_file(
     kind: str = Form("other"),
     series_id: Optional[str] = Form(None),
 ) -> dict[str, Any]:
-    safe_name = (file.filename or "upload").replace("/", "_")
-    dest = config.UPLOAD_DIR / f"{store.new_id('f')}_{safe_name}"
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    if series_id and not store.get_series(series_id):
+        raise HTTPException(404, "campaign not found")
+    safe_name = Path((file.filename or "upload").replace("\\", "/")).name[:180]
+    if kind not in ("other", "image", "logo", "policy", "product", "brand", "brand_asset"):
+        raise HTTPException(422, "Unsupported upload kind")
+    if not safe_name or Path(safe_name).suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".pdf", ".txt", ".md"):
+        raise HTTPException(422, "Use PNG, JPEG, WebP, PDF or text files")
+    dest = owner_directory("uploads") / f"{store.new_id('f')}_{safe_name}"
+    size = 0
+    try:
+        with dest.open("xb") as out:
+            os.chmod(dest, 0o600)
+            while chunk := await file.read(64 * 1024):
+                size += len(chunk)
+                if size > 15 * 1024 * 1024:
+                    raise HTTPException(413, "Upload exceeds 15 MiB")
+                out.write(chunk)
+        if not size:
+            raise HTTPException(422, "Empty upload")
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        raise
     upload_id = store.add_upload(safe_name, kind, str(dest), file.content_type, series_id)
     return {"id": upload_id, "filename": safe_name, "kind": kind}
 
 
 @app.get("/api/uploads")
 def list_uploads() -> list[dict[str, Any]]:
-    return store.list_uploads()
+    return [{k: row.get(k) for k in ("id", "filename", "kind", "content_type", "series_id", "created_at")} for row in store.list_uploads()]
 
 
 # ------------------------------------------------------------------ series --
@@ -146,10 +215,18 @@ def get_thread(thread_id: str, after_seq: int = 0) -> dict[str, Any]:
     if not thread:
         raise HTTPException(404, "thread not found")
     series = store.get_series(thread["series_id"])
+    working = threadkit.working_step(thread_id)
+    job = store.last_job_status(thread_id)
     return {
         **thread,
         "series_name": series["name"] if series else "",
-        "working": threadkit.working_step(thread_id),  # labeled step, never a bare spinner
+        "cached": bool(series and series.get("mode") == "cached"),
+        "prepared": bool(series and series.get("mode") == "cached"),
+        "working": working,  # labeled step, never a bare spinner
+        "job_status": "interrupted" if job and job["status"] == "running" and not working else (job or {}).get("status"),
+        "recovery": ({"event":"retry", "artifact_id":"recovery", "label":"Retry interrupted step",
+                      "warning":"Saved work is retained. Earlier provider work may have been charged; review usage before retrying."}
+                     if not working and job and job["status"] in ("running","failed","interrupted") and campaign.recovery_job(thread) else None),
         "messages": store.get_messages(thread_id, after_seq=after_seq),
         "concept_states": store.get_concept_states(thread["series_id"]),
     }
@@ -166,6 +243,10 @@ def post_event(thread_id: str, body: UserEvent) -> dict[str, Any]:
         # Content Studio and Creative Studio threads are gone. An old row can
         # still be in a dev database, so say what happened rather than 500.
         raise HTTPException(410, f"thread kind {thread['kind']!r} is no longer supported")
+    if body.text and len(body.text) > 16000 or len(body.upload_ids) > 8:
+        raise HTTPException(413, "Message exceeds the campaign limit")
+    if body.upload_ids and len(store.get_uploads(list(set(body.upload_ids)))) != len(set(body.upload_ids)):
+        raise HTTPException(404, "upload not found")
     try:
         campaign.handle_event(body)
     except ValueError as exc:
@@ -199,6 +280,7 @@ def asset_meta(asset_id: str):
         "status": asset["status"], "cost": asset["cost"],
         "name": params.get("name"),
         "prompt": params.get("prompt"),
+        "provider": params.get("provider") or ("sample" if params.get("model") == "mock" else str(params.get("model", "")).split(":", 1)[0] if str(params.get("model", "")).startswith(("pixelbin:", "fal:")) else None),
         "settings": {
             "model": params.get("model"),
             "aspect_ratio": params.get("ratio"),
@@ -238,8 +320,9 @@ def asset_file(asset_id: str):
         raise HTTPException(404, "asset not found")
     media_types = {"svg": "image/svg+xml", "png": "image/png", "mp4": "video/mp4",
                    "wav": "audio/wav", "mp3": "audio/mpeg"}
-    ext = asset["path"].rsplit(".", 1)[-1]
-    return FileResponse(asset["path"], media_type=media_types.get(ext, "application/octet-stream"))
+    path = store.file_path(asset, "assets")
+    ext = path.suffix.lstrip(".")
+    return FileResponse(path, media_type=media_types.get(ext, "application/octet-stream"), headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/api/threads/{thread_id}/generation-log")
@@ -283,6 +366,8 @@ def create_campaign(body: CampaignCreateBody) -> dict[str, Any]:
     """Step 0: the blank landing's only block. Name is the Campaigns-tab
     handle and the thread numbering prefix, so it must be unique."""
     name = body.name.strip()
+    if len(name) > 120:
+        raise HTTPException(422, "Campaign name must be at most 120 characters")
     if not name:
         raise HTTPException(422, "Naming is required: give the campaign a name")
     if any(row["name"].strip().lower() == name.lower() for row in list_campaigns()):
@@ -305,14 +390,25 @@ def list_campaigns() -> list[dict[str, Any]]:
         if not series:
             continue
         context = series["context"]
+        thumbnail = next((a["id"] for a in store.list_assets(thread["id"]) if a.get("kind") in ("image", "svg", "png")), None)
+        for card in store.list_ad_cards(series_id):
+            for media in card.get("media") or []:
+                match=re.fullmatch(r"/api/assets/([A-Za-z0-9_-]+)/file",str(media.get("url", "")))
+                if media.get("kind")=="image" and match and store.get_asset(match.group(1)):
+                    thumbnail=match.group(1);break
+            else:continue
+            break
         rows.append({
             "id": series_id,
             "name": series["name"],
             "objective": (context.get("campaign") or {}).get("objective"),
             "status": series["status"],
             "creative_count": len(store.list_ad_cards(series_id)),
-            "spend_credits": round(store.campaign_spend(series_id) / threadkit.CREDIT_USD, 1),
+            "spend_credits": store.campaign_media_credits(series_id),
+            "estimated_spend_usd": store.campaign_spend(series_id),
             "thread_id": thread["id"],
+            "thumbnail_asset_id": thumbnail,
+            "cached": series.get("mode") == "cached",
         })
     return rows
 
@@ -368,13 +464,24 @@ def _pdf_text(raw: bytes) -> str:
     import zlib
 
     chunks: list[bytes] = []
-    for match in re.finditer(rb"stream\r?\n(.*?)endstream", raw, re.S):
+    if len(raw) > 15 * 1024 * 1024:
+        raise HTTPException(413, "Policy file exceeds 15 MiB")
+    expanded = 0
+    for index, match in enumerate(re.finditer(rb"stream\r?\n(.*?)endstream", raw, re.S)):
+        if index >= 200:
+            raise HTTPException(413, "Policy document has too many streams")
         blob = match.group(1)
         try:
-            blob = zlib.decompress(blob)
+            decoder = zlib.decompressobj()
+            blob = decoder.decompress(blob, 4 * 1024 * 1024 + 1)
+            if decoder.unconsumed_tail or len(blob) > 4 * 1024 * 1024:
+                raise HTTPException(413, "Policy content exceeds extraction limit")
         except zlib.error:
             if b"Tj" not in blob and b"TJ" not in blob:
                 continue  # binary image/font stream, not page text
+        expanded += len(blob)
+        if expanded > 8 * 1024 * 1024:
+            raise HTTPException(413, "Policy content exceeds extraction limit")
         chunks += re.findall(rb"\((?:\\.|[^\\()])*\)", blob)
     text = b" ".join(c[1:-1] for c in chunks).decode("latin-1", "replace")
     return re.sub(r"[ \t]+", " ", re.sub(r"\\([()\\])", r"\1", text)).strip()
@@ -388,9 +495,13 @@ def _policy_text(upload_id: Optional[str]) -> tuple[str, list[str]]:
     rows = store.get_uploads([upload_id])
     if not rows:
         return "", [f"policy upload {upload_id} not found"]
-    upload, path = rows[0], Path(rows[0]["path"])
-    if not path.exists():
+    upload = rows[0]
+    try:
+        path = store.file_path(upload, "uploads")
+    except FileNotFoundError:
         return "", [f"policy file missing on disk ({upload['filename']})"]
+    if path.stat().st_size > 15 * 1024 * 1024:
+        raise HTTPException(413, "Policy file exceeds 15 MiB")
     suffix = path.suffix.lower()
     if suffix in (".txt", ".md", ".markdown"):
         return path.read_text(encoding="utf-8", errors="replace"), []
@@ -570,18 +681,28 @@ def ad_card_bundle(card_id: str):
     if not card:
         raise HTTPException(404, "ad card not found")
     naming = re.sub(r"[^A-Za-z0-9_.-]+", "_", card.get("naming") or card_id)
+    if len(card.get("media") or []) > 30 or len(json.dumps(card)) > 2 * 1024 * 1024:
+        raise HTTPException(413, "Bundle exceeds export limit")
+    files = []
+    total_bytes = 0
+    for item in card.get("media") or []:
+        url = item.get("url") or ""
+        match = re.fullmatch(r"/api/assets/([A-Za-z0-9_-]+)/file", url)
+        asset = store.get_asset(match.group(1)) if match else None
+        if not asset:
+            raise HTTPException(404, "Bundle asset not found")
+        path = store.file_path(asset, "assets")
+        total_bytes += path.stat().st_size
+        if total_bytes > 96 * 1024 * 1024:
+            raise HTTPException(413, "Bundle exceeds 96 MiB")
+        files.append((item, path))
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for platform, text in (card.get("placements") or {}).items():
             zf.writestr(f"copy_{platform}.txt", text)
         zf.writestr("meta.json", json.dumps(card, indent=2, default=str))
-        for m in card.get("media") or []:
-            asset_id = m["url"].rstrip("/").split("/")[-2] if m["url"].endswith("/file") else None
-            asset = store.get_asset(asset_id) if asset_id else None
-            if asset:
-                p = Path(asset["path"])
-                if p.exists():
-                    zf.writestr(f"media/{naming}_{m['params'].get('prompt_id', p.stem)}{p.suffix}", p.read_bytes())
+        for m, p in files:
+            zf.writestr(f"media/{naming}_{re.sub(r'[^A-Za-z0-9_.-]', '_', str(m['params'].get('prompt_id', p.stem)))}{p.suffix}", p.read_bytes())
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/zip",
                              headers={"Content-Disposition": f'attachment; filename="{card_id}.zip"'})
@@ -659,12 +780,15 @@ def _truthy_env(name: str) -> bool:
 
 
 def _read_runs() -> list[dict[str, Any]]:
-    path = config.LOG_DIR / "agent_runs.jsonl"
+    path = owner_directory("runs") / "agent_runs.jsonl"
     if not path.exists():
         return []
     runs: list[dict[str, Any]] = []
     buf = ""
-    for line in path.read_text(errors="replace").splitlines(True):
+    with path.open("rb") as source:
+        source.seek(max(0, path.stat().st_size - 4 * 1024 * 1024))
+        raw = source.read(4 * 1024 * 1024)
+    for line in raw.decode(errors="replace").splitlines(True):
         buf += line
         try:
             row = json.loads(buf)
@@ -692,7 +816,8 @@ def all_agent_runs(limit: int = 200) -> dict[str, Any]:
         for t in store.list_threads()
     }
 
-    runs = _read_runs()
+    limit = min(max(limit, 1), 500)
+    runs = [row for row in _read_runs() if fixture_mode() or row.get("thread_id") in names]
     for row in runs:
         tid = row.get("thread_id")
         row["campaign_name"] = names.get(tid or "", None)
@@ -733,7 +858,7 @@ def all_media_runs(limit: int = 200) -> dict[str, Any]:
         raise HTTPException(404, "observability is disabled on this deployment")
 
     series_names = {row["id"]: row["name"] for row in store.list_series()}
-    rows = store.recent_generations(limit)
+    rows = store.recent_generations(min(max(limit, 1), 500))
     for row in rows:
         row["campaign_name"] = series_names.get(row.get("series_id") or "", None)
         row["provider"] = _provider_of(row.get("model") or "")

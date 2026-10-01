@@ -7,3 +7,6 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 .gstack/
+
+# Isolated production preview; baseline dev output remains separate.
+.next-integrated/

@@ -1,4 +1,7 @@
 "use client";
+import PrivateDownload from "./private-download";
+import ProviderBadge from "./provider-badge";
+import { mediaCost, sampleMedia, recordedCredits } from "@/lib/client/media-pricing";
 
 // Addendum-03 (Marketing Studio v2): the seven campaign artifact types.
 // Same contract as thread-artifacts.tsx — compact cards inside the agent
@@ -46,12 +49,6 @@ const BTN_DANGER = `${BTN} border border-[var(--ms-danger,#FFFFFF)] text-[var(--
 const BTN_INERT = `${BTN} cursor-not-allowed border border-dashed border-[var(--ms-line-strong,#6B7589)] text-[var(--ms-text-2,#A6B0C0)]`;
 const PILL =
   "inline-flex items-center gap-1 rounded-[12px] border border-[var(--ms-line,#2A3140)] bg-[var(--ms-elev,#1E242E)] px-2.5 py-0.5 text-[11.5px] text-[var(--ms-text-2,#A6B0C0)] whitespace-nowrap";
-
-// The backend bills 1 credit = $0.10 (app/config.py CREDIT_USD) and the Ad Card
-// totals in credits, so every USD price carries the bridge to the same unit.
-const CREDIT_USD = 0.1;
-const credits = (usd: number) => Math.round((usd / CREDIT_USD) * 10) / 10;
-const price = (usd: number) => `$${usd.toFixed(2)} (~${credits(usd)} credits)`;
 
 // v2 steps 5 + 8: the card root IS the way into the right panel. Same pattern
 // as thread-artifacts.tsx — clickable root, nested controls stop propagation.
@@ -692,6 +689,8 @@ const CHOICE_EVENT: Record<GenChoice, string> = {
 function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
   const c = (artifact.payload?.confirm ?? {}) as Partial<ModelConfirm>;
   const variants = c.variants_proposed ?? [];
+  const sample = sampleMedia(artifact.payload, c);
+  const price = (value: unknown) => mediaCost(value, artifact.payload, c);
   const [choice, setChoice] = useState<GenChoice | null>(null);
 
   const offered = (ch: GenChoice) => (artifact.actions ?? []).some((a) => a.event === CHOICE_EVENT[ch]);
@@ -719,7 +718,7 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className={LABEL}>Confirm before generating</p>
-          <h3 className="mt-0.5 text-[14px] font-bold">{c.recommended_model ?? artifact.title}</h3>
+          <h3 className="mt-0.5 text-[14px] font-bold">{sample ? "Prepared sample renderer" : c.recommended_model ?? artifact.title}</h3>
         </div>
         {/* rendered, honestly inert. A native `disabled` would kill the pointer
             events the title needs, so the promise below would never show. */}
@@ -737,6 +736,7 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
       </div>
 
       {c.reason && <p className={`mt-1.5 text-[12.5px] ${MUTED}`}>{c.reason}</p>}
+      <p className={`mt-1.5 text-[12px] ${MUTED}`}>{sample ? "Sample output · zero provider calls and no provider charge." : "Planning estimates only. Provider USD conversion is unverified; these amounts are not a quote or invoice."}</p>
       <p id={noteId} className={`mt-1 text-[11.5px] ${MUTED}`}>
         {note}
       </p>
@@ -774,12 +774,7 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
                       : `${variantCount(ch)} named deltas, one shared variant group.`}
                   </span>
                 </span>
-                <span className="shrink-0 text-right font-mono text-[11.5px]">
-                  ${costFor(ch).toFixed(2)}
-                  <span className={`block text-[10.5px] font-normal ${MUTED}`}>
-                    ~{credits(costFor(ch))} credits
-                  </span>
-                </span>
+                <span className="max-w-[140px] text-right font-mono text-[11.5px]">{price(costFor(ch))}</span>
               </button>
             );
           })}
@@ -815,7 +810,7 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
             <div key={v.variant_id} className={`${TILE} p-2.5`}>
               <p className="flex items-center justify-between text-[12px] font-bold">
                 <span>Variant {v.variant_id}</span>
-                <span className="font-mono font-normal">${Number(v.cost_usd ?? 0).toFixed(2)}</span>
+                <span className="font-mono font-normal">{price(v.cost_usd)}</span>
               </p>
               <p className="mt-0.5 text-[12px]">{v.delta}</p>
               <p className={`mt-0.5 text-[11.5px] italic ${MUTED}`}>{v.hypothesis}</p>
@@ -840,7 +835,7 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
         </button>
         {!choice && (
           <span className={`text-[11.5px] ${MUTED}`}>
-            Pick single or variants — cost is charged on confirm.
+            Pick single or variants before confirming generation.
           </span>
         )}
       </div>
@@ -853,6 +848,8 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
 // actions: accept_all | reroll_<slot> | use_as_reference_<slot>
 
 type CreativeItem = {
+  provider?: string | null;
+  model?: string | null;
   asset_id: string;
   slot: string;
   kind: "image" | "video" | "audio";
@@ -916,7 +913,7 @@ function CreativeItemTile({
 
       <p className={`mt-1 font-mono text-[10px] ${MUTED}`}>
         {item.asset_id}
-        {est != null && ` · $${est.toFixed(2)}`}
+        {` · ${mediaCost(est, artifact.payload, item)}`} <ProviderBadge provider={sampleMedia(artifact.payload, item) ? "sample" : item.provider} model={item.model} />
       </p>
 
       <div className="mt-1.5 flex flex-wrap gap-1">
@@ -926,12 +923,14 @@ function CreativeItemTile({
           disabled={busy}
           onClick={() => onAction(artifact.id, `reroll_${item.slot}`)}
           title={
-            est != null
-              ? `Re-roll this asset only — the rest of the set is untouched. Charges ${price(est)} on click.`
+            sampleMedia(artifact.payload, item)
+              ? "Re-render this sample only with zero provider calls or charges."
+              : est != null
+              ? `Re-roll this asset only — the rest of the set is untouched. ${mediaCost(est, artifact.payload, item)}; a provider charge may occur when live.`
               : "Re-roll this asset only — the rest of the set is untouched. No cost is on record for this slot, so the charge is unknown."
           }
         >
-          {est != null ? `Re-roll · $${est.toFixed(2)}` : "Re-roll · cost unknown"}
+          {`Re-roll · ${mediaCost(est, artifact.payload, item)}`}
         </button>
         <button
           type="button"
@@ -943,15 +942,7 @@ function CreativeItemTile({
           Use as reference
         </button>
         {url && (
-          <a
-            className={`${BTN_GHOST} !px-2 !py-0.5 !text-[11px]`}
-            href={url}
-            download
-            target="_blank"
-            rel="noreferrer"
-          >
-            Download
-          </a>
+          <PrivateDownload className={`${BTN_GHOST} !px-2 !py-0.5 !text-[11px]`} href={url}>Download</PrivateDownload>
         )}
       </div>
     </div>
@@ -988,8 +979,8 @@ function CreativeSetCard({
         <p className={LABEL}>{artifact.title || "Creative set"}</p>
         <div className="flex items-center gap-1.5">
           {working > 0 && <MsChip tone="warn">{working} rendering…</MsChip>}
-          <MsChip title="Sum of the per-asset generation cost in this set">
-            {price(spend)}
+          <MsChip title="Recorded sample status or an unverified estimate; not a provider invoice">
+            {mediaCost(spend, artifact.payload, {sample_media: items.length > 0 && items.every((item) => sampleMedia(item))})}
           </MsChip>
         </div>
       </div>
@@ -1043,7 +1034,6 @@ function AdCardCard({
   const card = (artifact.payload?.card ?? {}) as Partial<AdCard>;
   const live = card.status === "live";
   const placements = Object.entries(card.placements ?? {});
-  const spendCredits = Number(card.total_cost_credits ?? 0);
   const root = openRoot(artifact, onOpen, variant);
 
   return (
@@ -1064,8 +1054,8 @@ function AdCardCard({
           {(card.ratios ?? []).map((r) => (
             <MsChip key={r}>{r}</MsChip>
           ))}
-          <MsChip title="Total generation spend booked to this Ad Card">
-            {spendCredits} credits (~${(spendCredits * CREDIT_USD).toFixed(2)})
+          <MsChip title="Sample cost or planning estimate; USD conversion is unverified">
+            {mediaCost(card.estimated_cost_usd, artifact.payload, card)}
           </MsChip>
         </div>
       </div>
@@ -1095,7 +1085,8 @@ function AdCardCard({
               )}
               <p className={`mt-0.5 font-mono text-[9.5px] ${MUTED}`}>
                 {m.ratio}
-                {m.params?.cost != null && ` · $${Number(m.params.cost).toFixed(2)}`}
+                {` · ${mediaCost(m.params?.cost, artifact.payload, card, m.params)}`} <ProviderBadge provider={sampleMedia(artifact.payload, card, m.params) ? "sample" : m.params?.provider} model={m.params?.model} />
+                {recordedCredits(m.params?.consumed_credits) && <span className="block">{recordedCredits(m.params?.consumed_credits)}</span>}
               </p>
             </div>
           ))}
@@ -1116,9 +1107,9 @@ function AdCardCard({
 
       <div className="mt-3 flex flex-wrap gap-1.5" {...STOP}>
         {card.id ? (
-          <a className={BTN_PRIMARY} href={api.adCards.bundleUrl(card.id)}>
+          <PrivateDownload className={BTN_PRIMARY} href={api.adCards.bundleUrl(card.id)}>
             Download bundle
-          </a>
+          </PrivateDownload>
         ) : (
           // no id yet = nothing stored to zip; a live-looking link would 404
           <span
@@ -1444,6 +1435,7 @@ function CanonSheetCard({ artifact, onAction, busy }: CampaignArtifactProps) {
                 <MsChip>{s.kind}</MsChip>
               </div>
               <p className="mt-1 text-[12.5px]">{s.brief}</p>
+              <ProviderBadge provider={sampleMedia(artifact.payload, s) ? "sample" : s.provider} model={s.model} />
               {s.sheet_asset_id && (
                 // The sheet IS the artifact. The gate asks the user to confirm
                 // every panel is present, and an instruction to check something
@@ -1507,12 +1499,11 @@ function KeyframeBoardCard({ artifact, onAction, busy }: CampaignArtifactProps) 
       <div className="flex items-center justify-between gap-3">
         <p className={LABEL}>Keyframes · {approved}/{frames.length} approved</p>
         <MsChip tone={board.all_approved ? "ok" : "warn"}>
-          {price(board.total_cost_usd ?? 0)}
+          {mediaCost(board.total_cost_usd, artifact.payload, {sample_media: frames.length > 0 && frames.every((frame) => sampleMedia(frame))})}
         </MsChip>
       </div>
       <p className={`mt-0.5 text-[11px] ${MUTED}`}>
-        No video is generated until every frame is approved. A still costs a fraction of the
-        motion it protects.
+        No video is generated until every frame is approved. Review the stills before approving motion.
       </p>
 
       <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
@@ -1533,6 +1524,7 @@ function KeyframeBoardCard({ artifact, onAction, busy }: CampaignArtifactProps) 
             <div className="p-2">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[10.5px]">{f.shot_slot}</span>
+                <ProviderBadge provider={sampleMedia(artifact.payload, f) ? "sample" : f.provider} model={f.model} />
                 <MsChip tone={f.approved ? "ok" : "warn"}>
                   {f.approved ? "approved" : "pending"}
                 </MsChip>
@@ -1703,7 +1695,7 @@ function VariantMatrixCard({ artifact }: CampaignArtifactProps) {
                 re-renders {c.shots_rerendered?.length ?? 0} of{" "}
                 {(c.shots_rerendered?.length ?? 0) + (c.shots_reused ?? 0)}
               </MsChip>
-              <MsChip>{price(c.cost_usd ?? 0)}</MsChip>
+              <MsChip>{mediaCost(c.cost_usd, artifact.payload, c)}</MsChip>
               {c.localisation_tier && (
                 <MsChip tone="warn" title={LOCALISATION_LIMIT[c.localisation_tier]}>
                   {c.localisation_tier}
@@ -1716,10 +1708,10 @@ function VariantMatrixCard({ artifact }: CampaignArtifactProps) {
 
       <div className="mt-2.5 flex items-center justify-between border-t border-[var(--ms-line,#2A3140)] pt-2">
         <span className={`text-[11.5px] ${MUTED}`}>
-          from scratch {price(m.baseline_cost_usd ?? 0)} · derived from the board{" "}
-          {price(m.matrix_cost_usd ?? 0)}
+          from scratch {mediaCost(m.baseline_cost_usd, artifact.payload)} · derived from the board{" "}
+          {mediaCost(m.matrix_cost_usd, artifact.payload)}
         </span>
-        <MsChip tone="ok">{saved}% less</MsChip>
+        {!sampleMedia(artifact.payload) && <MsChip>Estimated {saved}% less</MsChip>}
       </div>
     </div>
   );

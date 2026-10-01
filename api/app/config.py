@@ -8,7 +8,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / ".env")
+HOSTED = os.environ.get("PORTFOLIO_AUTH_ENABLED", "0") == "1"
+if not HOSTED:
+    load_dotenv(ROOT / ".env")
 
 # Corp TLS-intercepting proxy: Jupyter/uvicorn processes don't source
 # .venv/bin/activate, so pin the CA bundle here before any outbound call.
@@ -41,10 +43,12 @@ ALLOW_SEED_EVIDENCE = _truthy("PLOTLINE_ALLOW_SEED_EVIDENCE", "0")
 AUX_RAG_URL = os.environ.get("PLOTLINE_AUX_RAG_URL", "")
 
 # --- models (PRD §7: Sonnet = plan/critique/studio, Haiku = intake/ingest) ---
-PLANNER_MODEL = os.environ.get("PLOTLINE_PLANNER_MODEL", "claude-sonnet-4-6")
-FEEDBACK_MODEL = os.environ.get("PLOTLINE_FEEDBACK_MODEL", "claude-sonnet-4-6")
-INTAKE_MODEL = os.environ.get("PLOTLINE_INTAKE_MODEL", "claude-haiku-4-5")
-INTAKE_VISION_MODEL = os.environ.get("PLOTLINE_INTAKE_VISION_MODEL", "claude-sonnet-4-6")
+LLM_PROVIDER = os.environ.get("PLOTLINE_LLM_PROVIDER", "openai").strip().lower()
+_DEFAULT_MODEL = "gpt-5.4-mini" if LLM_PROVIDER == "openai" else "claude-sonnet-4-6"
+PLANNER_MODEL = os.environ.get("PLOTLINE_PLANNER_MODEL", _DEFAULT_MODEL)
+FEEDBACK_MODEL = os.environ.get("PLOTLINE_FEEDBACK_MODEL", _DEFAULT_MODEL)
+INTAKE_MODEL = os.environ.get("PLOTLINE_INTAKE_MODEL", "gpt-5.4-mini" if LLM_PROVIDER == "openai" else "claude-haiku-4-5")
+INTAKE_VISION_MODEL = os.environ.get("PLOTLINE_INTAKE_VISION_MODEL", _DEFAULT_MODEL)
 
 
 def _stage_model(stage: str, fallback: str) -> str:
@@ -85,15 +89,18 @@ MOCK_LLM = os.environ.get("MOCK_LLM", "0") == "1"
 # Real mode with no key is a deployment mistake, not a runtime surprise. Without
 # this the first agent call dies deep inside the SDK and the user sees a generic
 # 500 — the same class of dishonesty as parsing a truncated response.
-LLM_KEY_PRESENT = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+LLM_KEY_PRESENT = bool(os.environ.get("OPENAI_API_KEY" if LLM_PROVIDER == "openai" else "ANTHROPIC_API_KEY", "").strip())
 
 
 def llm_unavailable_reason() -> Optional[str]:
     """Why a real agent call cannot be made right now, or None if it can."""
     if MOCK_LLM:
         return None
+    if LLM_PROVIDER not in ("openai", "anthropic"):
+        return "Unsupported configured text provider"
     if not LLM_KEY_PRESENT:
-        return ("MOCK_LLM=0 but ANTHROPIC_API_KEY is not set on this deployment — "
+        key = "OPENAI_API_KEY" if LLM_PROVIDER == "openai" else "ANTHROPIC_API_KEY"
+        return (f"MOCK_LLM=0 but {key} is not set on this deployment — "
                 "the agents cannot run. Set the key, or set MOCK_LLM=1 to use "
                 "deterministic sample output.")
     return None
@@ -103,8 +110,8 @@ def llm_unavailable_reason() -> Optional[str]:
 # intake asks for it today), because enrichment is an INPUT-gathering job: the
 # planner and the council still argue from the retrieval corpus alone, so a web
 # result can never quietly become the evidence behind a claim.
-WEB_SEARCH = _truthy("PLOTLINE_WEB_SEARCH", "1")
-WEB_SEARCH_MAX_USES = int(os.environ.get("PLOTLINE_WEB_SEARCH_MAX_USES", "3"))
+WEB_SEARCH = _truthy("PLOTLINE_WEB_SEARCH", "0")
+WEB_SEARCH_MAX_USES = min(3, max(0, int(os.environ.get("PLOTLINE_WEB_SEARCH_MAX_USES", "3"))))
 
 MAX_VALIDATION_RETRIES = 2  # §3.9: re-run with the error, max 2 retries
 
@@ -113,7 +120,10 @@ MAX_VALIDATION_RETRIES = 2  # §3.9: re-run with the error, max 2 retries
 # tokens are billed against the SAME budget as the answer: a chair that thinks
 # hard and then emits a large Feedback object can be cut off mid-JSON, which
 # surfaces as a bogus "Expecting ',' delimiter" instead of an honest overflow.
-MAX_OUTPUT_TOKENS = int(os.environ.get("PLOTLINE_MAX_OUTPUT_TOKENS", "32000"))
+MAX_OUTPUT_TOKENS = min(16384, max(512, int(os.environ.get("PLOTLINE_MAX_OUTPUT_TOKENS", "8192"))))
+MAX_INPUT_BYTES = min(256000, max(4096, int(os.environ.get("PLOTLINE_MAX_INPUT_BYTES", "128000"))))
+MAX_TOOL_TURNS = min(12, max(1, int(os.environ.get("PLOTLINE_MAX_TOOL_TURNS", "8"))))
+MAX_AGENT_SECONDS = min(300, max(30, int(os.environ.get("PLOTLINE_MAX_AGENT_SECONDS", "180"))))
 
 # --- Creative Studio media --------------------------------------------------
 # PixelBin is the primary provider (owner decision 2026-08-26); fal.ai stays
@@ -218,7 +228,7 @@ def ref_slots(kind: str, tier: str = "final") -> int:
     """
     return MEDIA_REF_SLOTS.get(media_key(kind, tier), MEDIA_REF_SLOTS_DEFAULT)
 
-DATA_DIR = ROOT / "data"
+DATA_DIR = Path(os.environ.get("PLOTLINE_DATA_DIR", str(ROOT / "data")))
 UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "plotline.db"
 PROMPTS_DIR = ROOT / "prompts"

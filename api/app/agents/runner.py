@@ -52,19 +52,8 @@ class AgentTruncated(ValueError):
     """
 
 
-class AgentTransport(ValueError):
-    """The connection dropped before a complete response arrived.
-
-    Subclasses ValueError so the §3.9 retry loop picks it up — but it is NOT a
-    validation failure and must not be reported to the model as one: there was
-    no output to correct. A dropped stream is safe to re-issue verbatim.
-
-    Before this existed, an httpx error escaped run_agent entirely: no log row
-    was persisted (so the node vanished from observability), and a full paid
-    rumination was discarded because one mid-stream blip hit the last node. On
-    the production models that is minutes of successful, already-paid work
-    thrown away for a network hiccup.
-    """
+class AgentTransport(RuntimeError):
+    """Unknown provider completion; never automatically dispatch again."""
 
 
 class AgentHardFail(RuntimeError):
@@ -234,83 +223,16 @@ def _llm_call(
     web_search: bool = False,
     searched: Optional[list[str]] = None,
 ) -> str:
-    import anthropic
-    import httpx
-
-    client = anthropic.Anthropic()
-    kwargs: dict[str, Any] = dict(model=model, max_tokens=config.MAX_OUTPUT_TOKENS, system=system)
-    if "sonnet-4-6" in model:
-        kwargs["thinking"] = {"type": "adaptive"}
-    tools = list(TOOL_DEFS) if use_tools else []
-    if web_search and config.WEB_SEARCH:
-        # A SERVER tool: Anthropic runs the search and hands back results, so
-        # there is no dispatcher branch for it and no key of our own. It bills
-        # to the same ANTHROPIC_API_KEY, which is why it is opt-in per agent
-        # rather than on for everything.
-        tools.append(WEB_SEARCH_TOOL)
-    if tools:
-        kwargs["tools"] = tools
-
-    convo = list(messages)
-    for _ in range(16):  # tool-loop cap
-        # Stream, always. A budget big enough for a thinking chair + a large
-        # Feedback object implies a generation the SDK refuses to run
-        # non-streamed ("Streaming is required for operations that may take
-        # longer than 10 minutes"). The final message has the same shape, so
-        # everything below is unchanged.
-        try:
-            with client.messages.stream(messages=convo, **kwargs) as stream:
-                resp = stream.get_final_message()
-        except (httpx.TransportError, anthropic.APIConnectionError) as exc:
-            # Connection-class only. An APIStatusError (401/403/400) is a real
-            # answer from the server and must surface, not spin.
-            raise AgentTransport(
-                f"the connection dropped before a complete response arrived ({type(exc).__name__}: "
-                f"{exc}) — nothing was received, so nothing is wrong with the request"
-            ) from exc
-        if resp.stop_reason == "tool_use":
-            convo.append({"role": "assistant", "content": resp.content})
-            results = []
-            for block in resp.content:
-                if block.type == "tool_use":
-                    output = (
-                        dispatcher.dispatch(block.name, dict(block.input))
-                        if dispatcher
-                        else json.dumps({"error": "no tools available"})
-                    )
-                    results.append(
-                        {"type": "tool_result", "tool_use_id": block.id, "content": output}
-                    )
-            convo.append({"role": "user", "content": results})
-            continue
-        if searched is not None:
-            # Record what was actually searched, not what we hoped would be.
-            # "Searched the web" with nothing behind it is the kind of claim
-            # this codebase treats as dishonesty, so the queries are captured
-            # from the response and shown to the user verbatim.
-            for block in resp.content:
-                if getattr(block, "type", "") == "server_tool_use" and block.name == "web_search":
-                    query = dict(getattr(block, "input", {}) or {}).get("query")
-                    if query and query not in searched:
-                        searched.append(query)
-
-        if resp.stop_reason == "pause_turn":
-            convo.append({"role": "assistant", "content": resp.content})
-            continue
-        if resp.stop_reason == "max_tokens":
-            # Never hand a truncated body to the JSON parser — it is a valid
-            # prefix, so the parser blames syntax and hides the real cause.
-            usage = getattr(resp, "usage", None)
-            thinking = getattr(getattr(usage, "output_tokens_details", None), "thinking_tokens", None)
-            raise AgentTruncated(
-                f"output hit the {config.MAX_OUTPUT_TOKENS}-token cap before the answer was complete "
-                f"(generated {getattr(usage, 'output_tokens', '?')} tokens"
-                + (f", {thinking} of them thinking" if thinking else "")
-                + ") — the response is incomplete, not invalid"
-            )
-        # join every text block: one long answer can arrive as several.
-        return "".join(b.text for b in resp.content if b.type == "text")
-    raise RuntimeError("tool loop exceeded 16 iterations")
+    from app.agents.providers import openai_call, anthropic_call, ProviderFailure, ProviderTruncated
+    call = {"openai": openai_call, "anthropic": anthropic_call}.get(config.LLM_PROVIDER)
+    if call is None:
+        raise RuntimeError("unsupported configured text provider")
+    try:
+        return call(model, system, messages, dispatcher, use_tools, web_search, searched)
+    except ProviderTruncated as exc:
+        raise AgentTruncated(str(exc)) from None
+    except ProviderFailure as exc:
+        raise AgentTransport(str(exc)) from None
 
 
 def run_agent(
@@ -332,8 +254,10 @@ def run_agent(
     """Validation retry loop (§3.9): invalid output → re-run with the error
     (max 2 retries) → AgentHardFail. Applies to mock output too — the mock
     goes through the same schema + server-side validation path."""
+    from app.execution import is_cached
+    mock = config.MOCK_LLM or is_cached()
     system, version = build_system(prompt_name, prompt_replacements, preludes)
-    log = RunLog(agent=agent, model=model, prompt_version=version, mock=config.MOCK_LLM,
+    log = RunLog(agent=agent, model=model, prompt_version=version, mock=mock,
                  thread_id=current_thread.get(), started_at=time.time())
     log.node_input = _clip(user_payload)
     started = time.time()
@@ -345,7 +269,7 @@ def run_agent(
         log.attempts = attempt + 1
         raw_text: Optional[str] = None
         try:
-            if config.MOCK_LLM:
+            if mock:
                 if mock_fn is None:
                     raise RuntimeError(f"no mock for agent {agent}")
                 data = mock_fn(user_payload, dispatcher)
@@ -396,6 +320,11 @@ def run_agent(
             log.node_output = _clip(obj.model_dump(mode="json"))
             _persist_log(log)
             return obj, log
+        except AgentTransport as exc:
+            log.validation_errors.append(str(exc)[:200])
+            log.duration_s = time.time() - started
+            _persist_log(log)
+            raise
         except (ValidationError, AgentValidationError, ValueError, json.JSONDecodeError) as exc:
             last_error = str(exc)
             last_truncated = isinstance(exc, AgentTruncated)
@@ -435,7 +364,8 @@ def _cited_ids(obj: BaseModel) -> set[str]:
 
 
 def _persist_log(log: RunLog) -> None:
-    path: Path = config.LOG_DIR / "agent_runs.jsonl"
+    from app.execution import owner_directory
+    path: Path = owner_directory("runs") / "agent_runs.jsonl"
     with path.open("a") as fh:
         fh.write(json.dumps(log.to_dict(), default=str) + "\n")
 
@@ -444,6 +374,7 @@ def _persist_raw(log: RunLog, attempt: int, raw: Optional[str]) -> None:
     """Dump the exact body that failed to parse/validate, next to the run log."""
     if not raw:
         return
-    raw_dir: Path = config.LOG_DIR / "raw"
+    from app.execution import owner_directory
+    raw_dir: Path = owner_directory("runs") / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     (raw_dir / f"{log.run_id}-{log.agent}-attempt{attempt + 1}.txt").write_text(raw)

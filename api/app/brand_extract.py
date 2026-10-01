@@ -54,18 +54,14 @@ def _is_public(url: str) -> bool:
 
 
 def _fetch(url: str, timeout: float) -> httpx.Response:
-    """GET with the redirect chain re-checked hop by hop — follow_redirects
-    would let a public URL bounce the fetch onto a private one."""
-    for _ in range(_MAX_REDIRECTS + 1):
-        if not _is_public(url):
-            raise _NotPublic(_NOT_PUBLIC_NOTE)
-        response = httpx.get(url, timeout=timeout, follow_redirects=False, headers=_UA)
-        if response.is_redirect:
-            url = urljoin(url, response.headers["location"])
-            continue
-        response.raise_for_status()
-        return response
-    raise _NotPublic(_NOT_PUBLIC_NOTE)  # redirect loop
+    """The actual socket is pinned to the validated public address."""
+    from app.safe_network import public_get, NetworkDenied
+    try:
+        result = public_get(url, max_bytes=512 * 1024, max_seconds=min(timeout, 15.0))
+    except NetworkDenied:
+        raise _NotPublic(_NOT_PUBLIC_NOTE) from None
+    return httpx.Response(200, content=result.body, headers={"content-type": result.content_type},
+                          request=httpx.Request("GET", result.url))
 
 
 def _meta(html: str, *names: str) -> str | None:
@@ -140,8 +136,8 @@ def extract(url: str, timeout: float = 12.0) -> dict[str, Any]:
     missing = [k for k in ("palette", "font", "logo_url", "tagline") if not out[k]]
     if missing:
         out["notes"].append(f"couldn't find: {', '.join(missing)} — add them yourself")
-    logger.info("brand extract %s → palette=%d font=%s logo=%s",
-                url, len(out["palette"]), bool(out["font"]), bool(out["logo_url"]))
+    logger.info("brand extract complete: palette=%d font=%s logo=%s",
+                len(out["palette"]), bool(out["font"]), bool(out["logo_url"]))
     return out
 
 
