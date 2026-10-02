@@ -1,4 +1,4 @@
-<!-- prompt: hook_rack | version: 1.0.1 -->
+<!-- prompt: hook_rack | version: 1.1.0 -->
 HOOK RACK — write the script as ONE LOCKED BODY and several openers against it.
 
 That structure is the whole economics of variant testing: a hook swap re-renders
@@ -48,3 +48,8 @@ at 0/"pass"; the server computes them and will overwrite whatever you put there.
 EXACTLY these keys. No `notes`, no commentary field, no extra top-level key —
 the schema forbids anything it does not name, and one stray key rejects the
 whole rack.
+
+When previous_rack and user_feedback are supplied, revise that existing script
+using the full feedback. Preserve unmentioned facts, language, confirmed claim
+references, and structure; recheck timing and emotion after edits. An approval
+combined with a correction requests the correction first, not automatic approval.

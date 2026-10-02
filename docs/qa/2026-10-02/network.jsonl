@@ -24,3 +24,13 @@
 {"utc": "2026-10-02T07:30:07.960325+00:00", "pid": 4544, "event": "loopback_network_guard_installed"}
 {"utc": "2026-10-02T07:37:50.520552+00:00", "pid": 13372, "event": "loopback_network_guard_installed"}
 {"utc": "2026-10-02T07:38:36.588585+00:00", "pid": 14278, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:02:52.709083+00:00", "pid": 27936, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:04:55.741646+00:00", "pid": 30404, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:07:47.455556+00:00", "pid": 33375, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:09:02.772474+00:00", "pid": 34838, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:11:18.360372+00:00", "pid": 41023, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:12:43.920378+00:00", "pid": 42404, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:13:13.029422+00:00", "pid": 42573, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:13:36.841242+00:00", "pid": 42739, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:36:02.147921+00:00", "pid": 59131, "event": "loopback_network_guard_installed"}
+{"utc": "2026-10-02T08:36:54.242403+00:00", "pid": 59752, "event": "loopback_network_guard_installed"}

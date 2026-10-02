@@ -1,0 +1,67 @@
+{
+  "status": "verified",
+  "generated_at": "2026-10-02T08:47:51.895687+00:00",
+  "scope": "one ordinary QA-owned creative edit after missing-photo recovery, then acceptance/QC/delivery; not the separate exhausted owner campaign",
+  "new_provider_requests": 1,
+  "new_media_requests": 1,
+  "new_text_requests": 0,
+  "provider": "pixelbin",
+  "model": "nanoBanana_generate",
+  "consumed_credits": 1,
+  "actual_usd": null,
+  "usage_status": "usage_unavailable",
+  "historical_usage_preserved": true,
+  "ordinary_auth_enabled": true,
+  "mock": false,
+  "media_mock": false,
+  "media": [
+    {
+      "sha256": "9659487e24face8139d302510fbd2cf37fc912cbc70081da4a0e44ce5744d9d6",
+      "bytes": 1492509,
+      "mime": "image/png",
+      "width": 896,
+      "height": 1152,
+      "requested_ratio": "4:5",
+      "relative_ratio_deviation": 0.02777777777777779,
+      "ratio_tolerance": 0.035,
+      "exact_requested_ratio": false,
+      "prompt_sha256": "e4118abe944850f11ccc042e6ce9e97d368aa5a613b31fd2b40a06c86d128ed1",
+      "provider": "pixelbin",
+      "model": "pixelbin:nanoBanana_generate"
+    }
+  ],
+  "delivery_stage": "done",
+  "http_requests": 27,
+  "bundle_media_matches": true,
+  "bundle_sha256": "7fbe124be002bf3673a6547d87dd806641cd47865d84e1926e322d9ffefd750d",
+  "bundle_bytes": 1433550,
+  "bundle_content_type": "application/zip",
+  "bundle_is_attachment": true,
+  "private_download_no_store": true,
+  "foreign_resources_status": 404,
+  "foreign_generation_log_status": 404,
+  "cursor_preserved": true,
+  "verifier_provider_requests": 0,
+  "owner_allowance": 6,
+  "shared_remaining_after": 1,
+  "runtime_api_image": "sha256:e80f7bbd82437bb75c3f55fe9143056df5c62efdff9a7ada8c67d60d8d63e688",
+  "runtime_web_image": "sha256:bb7c0a9373be44aa231a00327e23fd924a3160eb4284d633c4f45ca06e4816b5",
+  "source_receipts": [
+    {
+      "path": "single-image-after.json",
+      "sha256": "409a825ddce4ce9288b5bbe09e72a151c0be3fa32730899445ff7d805bccf83d"
+    },
+    {
+      "path": "single-image-delivery.json",
+      "sha256": "754069fd4ef33ff10dc1154d2fa1ded1242bbbe6a6f2b38efdc9fa2820776e68"
+    },
+    {
+      "path": "photo-recovery-api-activation.json",
+      "sha256": "c4890c59076183181fde785886ee845271930bab3ceda7c997fa5f5cfdf09d8c"
+    },
+    {
+      "path": "conversation-web-activation.json",
+      "sha256": "b2218c24f64071fe8af14167d2341f49ab91c04d1bee703cfc926e100e23246f"
+    }
+  ]
+}

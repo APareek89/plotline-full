@@ -1,0 +1,9 @@
+{
+  "status": "syntax_pass",
+  "result": {
+    "diagramType": "flowchart-v2",
+    "config": {}
+  },
+  "method": "Installed Mermaid parser, DOMPurify identity shim for syntax-only Node environment; not browser rendering",
+  "providerCalls": 0
+}

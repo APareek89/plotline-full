@@ -2,12 +2,12 @@
   "date": "2026-10-02",
   "scope": "Plotline; free code/API/browser QA plus provider-free release operations; no paid model calls",
   "base_commit": "3cec470",
-  "count": 115,
+  "count": 127,
   "categories": 12,
   "scoring": "S/O/D use 1\u201310 expert ordinal estimates (not measured occurrence rates); high detection score means difficult to detect. RPN=S\u00d7O\u00d7D ranks pre-control review risk. A P0 risk scenario is not a claim of a P0 vulnerability. Status is evidence-specific, not production certification.",
   "status_definitions": {
     "mitigated": "observed operational failure relieved with recorded controls; permanent automation not claimed",
-    "fixed": "demonstrated issue changed locally with cited regression or factual metadata correction; deployment pending",
+    "fixed": "demonstrated issue corrected with cited regression; earlier release is deployed, newest conversational delta remains pending root release (see conversation-validation.json)",
     "passing": "cited automated contract passes locally under denied provider transport; not external model validation",
     "checked": "source control inspected; scenario not independently exercised here",
     "unverified": "requires real provider, scale, or destructive fault injection not authorized in this free review"
@@ -2413,6 +2413,306 @@
         }
       ],
       "recommended_action": "Show current non-Retry recovery choices while retaining the failed job and historical usage; keep the generic Retry banner for legacy Retry-only or free-text asks. No provider dispatch is needed to review saved references."
+    },
+    {
+      "id": "PL-FMEA-116",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "An informational question containing audience or edit words starts replanning or media",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 47,
+          "symbol": "test_information_questions_at_every_stage_never_mutate_or_dispatch",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-117",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "A late factual correction at a later campaign stage is ignored or loses unrelated context",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 7,
+      "occurrence": 7,
+      "detection": 5,
+      "rpn": 245,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 61,
+          "symbol": "test_late_facts_at_every_stage_use_actual_conversation_prompt_and_preserve_other_fields",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-118",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Approval prefix discards an accompanying correction and advances unchanged work",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 7,
+      "detection": 6,
+      "rpn": 336,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 172,
+          "symbol": "test_approval_plus_change_never_dispatches_approval_first",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-119",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "A visual correction updates only detail while paid generation still reads the old board",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 9,
+      "occurrence": 6,
+      "detection": 7,
+      "rpn": 378,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 101,
+          "symbol": "test_board_edit_changes_source_and_projection_then_survives_restart",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-120",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "A multi-image clarification loses original feedback or additional selection words",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 288,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 183,
+          "symbol": "test_informal_creative_feedback_uses_actual_prompt_then_requests_item_choice",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-121",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "A delivered-image correction cannot restart review or erases earlier deliverables",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 121,
+          "symbol": "test_delivered_multi_image_feedback_keeps_verbatim_note_across_question_and_reload",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-122",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "A plain yes answers a stage default rather than the current saved-reference question",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 288,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 138,
+          "symbol": "test_current_capacity_question_yes_means_saved_reference_review_not_canon_approval",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-123",
+      "category": "security_access_control",
+      "failure_scenario": "A late claim edit is blocked outright or becomes implicitly approved for advertising",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 9,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 195,
+          "symbol": "test_late_claim_change_returns_to_explicit_confirmation_not_automatic_approval",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-124",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "New product uploads change context without invalidating approved derived outputs",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 7,
+      "rpn": 315,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 158,
+          "symbol": "test_late_upload_invalidates_outputs_only_after_valid_context_and_keeps_paid_files",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-125",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Input sent during active work silently changes its inputs or falsely claims application",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 223,
+          "symbol": "test_busy_turn_is_durable_but_not_silently_applied",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-126",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "A no-op or ambiguous conversational response clears paid state and checkpoints",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_conversation_flow.py",
+          "line": 80,
+          "symbol": "test_noop_interpretation_does_not_clear_current_state_or_checkpoints",
+          "kind": "provider-denied actual driver; session-authored structured output where model interpretation is required"
+        },
+        {
+          "path": "docs/qa/2026-10-02/conversation-validation.json",
+          "kind": "final guarded suite and runtime source hashes"
+        }
+      ],
+      "recommended_action": "Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses."
+    },
+    {
+      "id": "PL-FMEA-127",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "A missing product photo blocks an existing reroll but supplying that prerequisite forces a paid replan and discards the selected edit",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 288,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_reroll_photo_recovery.py",
+          "line": 40,
+          "symbol": "test_photo_only_recovery_preserves_direction_restart_and_explicit_one_render",
+          "kind": "actual driver and store with production photo gate, authored media, restart and unchanged old assets"
+        },
+        {
+          "path": "docs/qa/2026-10-02/photo-recovery-validation.json",
+          "kind": "nine focused recovery contracts and guarded full suite"
+        }
+      ],
+      "recommended_action": "Persist the exact existing edit, stage, asset and context fingerprint; a neutral owned-photo reply adds only the missing reference and offers a separate explicit retry. New facts re-enter conversation; stale or foreign references never dispatch."
     }
   ]
 }

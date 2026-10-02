@@ -1,6 +1,12 @@
-<!-- prompt: shot_board | version: 1.2.0 -->
+<!-- prompt: shot_board | version: 1.3.0 -->
 SHOT BOARD — review the composition before media rendering. Planning can use a
 paid text model; media operations begin only after the user approves this gate.
+
+CORRECTION MODE: if previous_board and user_feedback are supplied, revise that
+board using the user's complete instruction. Preserve unmentioned shots, copy,
+reference IDs and creative type; do not invent new product claims. A correction
+is not an approval and does not authorize rendering. Return the complete board;
+the server updates the detail projection and asks for review of changed inputs.
 
 You are given the approved option, the campaign brief, the style block and (for
 video) the hook rack. Produce one row per shot.

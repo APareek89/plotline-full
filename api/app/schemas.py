@@ -753,6 +753,13 @@ class CampaignContext(Strict):
         return bool(self.product and self.campaign)
 
 
+class CampaignConversation(Strict):
+    """Bounded interpretation of a late conversational turn, never an approval."""
+    intent: Literal["context", "creative", "question", "unclear"]
+    context: CampaignContext
+    reply: str = Field(default="", max_length=1000)
+
+
 # The placement spec table. ONE source — AdCard._spec_table and CampaignBrief
 # both read it, because two lists drift and the second one is always the wrong
 # one. Anything rendered has to be a ratio we actually produce.

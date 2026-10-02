@@ -58,6 +58,7 @@ from app.schemas import (
     Cadence,
     CampaignBrief,
     CampaignContext,
+    CampaignConversation,
     CampaignDetail,
     CampaignOption,
     CampaignOptions,
@@ -244,6 +245,10 @@ def _rehydrate(thread_id: str, ws: dict[str, Any]) -> None:
                 ws["accepted"] = {i["slot"] for i in ws["items"]
                                   if (i["slot"], i.get("asset_id")) in approved}
             elif kind == "campaign_detail" and payload.get("detail"):
+                if payload.get("reset_outputs"):
+                    ws.update(keyframes=None, items=[], assets={}, accepted=set(), qc=None,
+                              ratios=[], variant_specs=[], variant_group_id=None, variant_count=1, reference=None)
+                    ws["prompts"].clear()
                 ws["detail"] = payload["detail"]
                 # The BOARD is the source of truth and `detail` is its
                 # projection, so restoring only the projection left canon,
@@ -536,6 +541,10 @@ def handle_event(event: UserEvent) -> None:
     ws["campaign_id"] = thread["series_id"]
     _rehydrate(event.thread_id, ws)
     stage = thread["stage"]
+    if _working.get(event.thread_id):
+        _say(event.thread_id, "Your message is saved, but the running step has not applied it.",
+             question="Send the change again when this step finishes so it can be reviewed safely.")
+        return
     if stage == "intake":
         context = _context_of(thread["series_id"])
         ws["intake_ready"] = not missing_blocks(context) and not _claims_awaiting_confirmation(context)
@@ -554,9 +563,23 @@ def handle_event(event: UserEvent) -> None:
         ws["pending_uploads"] = list(dict.fromkeys(
             list(ws.get("pending_uploads") or []) + list(event.upload_ids)))
     if event.upload_ids and stage != "intake":
-        context = _apply_pending_uploads(event.thread_id, _context_of(thread["series_id"]))
-        store.update_series_context(thread["series_id"], context.model_dump(mode="json"))
-    parsed = _parse(stage, text, ws, panel_focus=event.panel_focus)
+        if _attach_reroll_photo(thread, event.upload_ids, text):
+            return
+        # New references change paid-output inputs; never mutate the context under
+        # an already-approved board without invalidating its derived approvals.
+        _dispatch(thread, stage, "revise", "intake", text or "Use these attached product references.")
+        return
+    if not event.upload_ids and _neutral_photo_reply(text):
+        pending = store.load_checkpoint(event.thread_id, "_reroll_photo") or {}
+        if not pending.get("reference_ready") and _current_reroll_photo(thread, pending):
+            _remember_reroll_photo(thread, pending["slot"], pending.get("note"))
+            return
+    if _question_only(text):
+        _explain_current(event.thread_id, thread["series_id"], text)
+        return
+    parsed = _answer_current_question(event.thread_id, stage, text, ws)
+    if parsed is None:
+        parsed = _parse(stage, text, ws, panel_focus=event.panel_focus)
     if parsed is None:
         _hint(event.thread_id, _HINTS.get(stage, "Tell me what to change, or use the buttons on the cards."))
         return
@@ -568,11 +591,50 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
     ws = _ws(thread_id)
     ws["campaign_id"] = campaign_id
 
-    media_event = event in {"approve_board", "approve_canon", "skip_canon", "resheet_canon", "revise_environment",
-                           "regenerate_keyframes", "generate_single", "generate_draft", "generate_rest"} or event.startswith(("reroll_", "generate_variants_"))
-    if media_event and not _require_product_photo(thread_id, _context_of(campaign_id)):
+    if event == "resume_photo_reroll":
+        pending = store.load_checkpoint(thread_id, "_reroll_photo") or {}
+        if not _current_reroll_photo(thread, pending):
+            store.save_checkpoint(thread_id, "_reroll_photo", {})
+            _reply_current(thread_id, "That edit is no longer current; describe the change again.")
+            return
+        if not pending.get("reference_ready") or not _require_product_photo(thread_id, _context_of(campaign_id)):
+            return
+        store.save_checkpoint(thread_id, "_reroll_photo", {})
+        store.save_checkpoint(thread_id, "_conversation_edit", {})
+        _spawn(thread_id, _reroll_turn, thread_id, pending["slot"], pending.get("note"))
         return
 
+    media_event = event in {"approve_board", "approve_canon", "skip_canon", "resheet_canon", "revise_environment",
+                           "regenerate_keyframes", "generate_single", "generate_draft", "generate_rest"} or event.startswith(("reroll_", "edit_asset_", "generate_variants_"))
+    if media_event and not _require_product_photo(thread_id, _context_of(campaign_id)):
+        slot = event.removeprefix("reroll_") if event.startswith("reroll_") else None
+        note = extra if isinstance(extra, str) else None
+        if event.startswith("edit_asset_"):
+            edit = store.load_checkpoint(thread_id, "_conversation_edit") or {}
+            if edit.get("stage") == stage and edit.get("assets") == _item_identity(ws):
+                slot, note = event.removeprefix("edit_asset_"), edit.get("note")
+        if slot:
+            _remember_reroll_photo(thread, slot, note)
+        return
+
+    if event == "explain":
+        _explain_current(thread_id, campaign_id, str(extra or ""))
+        return
+    if event == "clarify_asset" and isinstance(extra, str):
+        _ask_asset_edit(thread_id, stage, extra)
+        return
+    if event.startswith("edit_asset_"):
+        pending = store.load_checkpoint(thread_id, "_conversation_edit") or {}
+        slot = event.removeprefix("edit_asset_")
+        if pending.get("stage") != stage or pending.get("assets") != _item_identity(ws) or slot not in _item_identity(ws):
+            _hint(thread_id, "That selection is no longer current; describe the change again.")
+            return
+        store.save_checkpoint(thread_id, "_conversation_edit", {})
+        _spawn(thread_id, _reroll_turn, thread_id, slot, pending["note"])
+        return
+    if event == "edit_board" and isinstance(extra, str):
+        _spawn(thread_id, _board_turn, thread_id, campaign_id, extra)
+        return
     if event == "revise" and isinstance(extra, str):
         _spawn(thread_id, _revise_turn, thread_id, campaign_id, extra)
         return
@@ -747,7 +809,10 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
             _spawn(thread_id, _confirm_turn, thread_id, campaign_id)
             return
         if event == "refine" and isinstance(extra, dict):
-            _spawn(thread_id, _refine_turn, thread_id, campaign_id, extra["target"], extra["note"])
+            if ws.get("board"):
+                _spawn(thread_id, _board_turn, thread_id, campaign_id, extra["note"])
+            else:
+                _spawn(thread_id, _refine_turn, thread_id, campaign_id, extra["target"], extra["note"])
             return
 
     # ---- step 7: cost + single-vs-variants, then generation
@@ -770,7 +835,7 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
             return
 
     # ---- step 8: per-asset acceptance
-    if stage in ("creative", "generate"):
+    if stage in ("creative", "generate", "qc", "done"):
         if event.startswith("use_as_reference_"):
             _use_as_reference(thread_id, event.removeprefix("use_as_reference_"))
             return
@@ -840,18 +905,158 @@ _HINTS = {
 }
 
 
+
+def _question_only(text: str) -> bool:
+    """Requests for information are not permission to mutate or buy work."""
+    low = text.strip().lower()
+    if re.match(r"^(?:can|could|would) you (?:please )?(?:make|change|adjust|add|remove|replace|use|set|regenerate|crop)\b", low):
+        return False
+    if low.endswith("?") and not _visual_edit(text):
+        return True
+    return bool(re.match(r"^(?:what|why|how|when|where|which|who|is|are|do|does|did|will|should|can|could|would)\b", low)
+                or re.match(r"^(?:please )?(?:explain|tell me|help me understand)\b", low))
+
+
+def _visual_edit(text: str) -> bool:
+    return bool(re.match(r"^(?:(?:please|can you|could you|actually)\s+)*(?:make|change|adjust|add|remove|replace|brighten|darken|crop|enlarge|shrink|move|reduce|increase|regenerate|redo|tighten|rewrite|shorten)\b", text.strip(), re.IGNORECASE))
+
+
+def _last_agent(thread_id: str) -> dict:
+    return next((m.get("envelope", {}) for m in reversed(store.get_messages(thread_id)) if m["role"] == "agent"), {})
+
+
+def _reply_current(thread_id: str, text: str, detail: str = "") -> None:
+    """Re-emit only the newest ask, never search backwards for stale actions."""
+    latest = _last_agent(thread_id)
+    stage = (store.get_thread(thread_id) or {}).get("stage")
+    stage_types = {"intake": {"intake_progress"}, "brief": {"campaign_brief"},
+                   "options": {"campaign_option"}, "templates": {"template_picker"},
+                   "script": {"hook_rack"}, "detail": {"campaign_detail"},
+                   "canon": {"canon_sheet"}, "keyframes": {"keyframe_board"},
+                   "generate": {"model_confirm"}, "creative": {"creative_set"},
+                   "qc": {"qc_report"}, "done": {"ad_card"}}
+    artifacts = [ArtifactEnvelope.model_validate(a) for a in latest.get("artifacts", [])
+                 if a.get("type") in stage_types.get(stage, set()) | {"escalation"}]
+    question = latest.get("question") or {}
+    if latest.get("artifacts") and not artifacts:
+        question = {}  # A later stage must never resurrect an earlier card.
+    if stage == "canon" and artifacts and artifacts[0].type == "canon_sheet" and {o.get("event") for o in question.get("options", [])} == {"approve_canon"}:
+        artifacts[0] = ArtifactEnvelope.model_validate({**artifacts[0].model_dump(mode="json"),
+            "actions": _actions(("approve_canon", "Approve canon", "primary"),
+                                ("resheet_canon", "Re-render sharper", "secondary"),
+                                ("skip_canon", "Skip sheets", "secondary"))})
+        question = {**question, "options": []}
+    _say(thread_id, text, artifacts,
+         question=question.get("text") or "What would you like to change or clarify?",
+         options=question.get("options") or [], multi=bool(question.get("multi")),
+         note="\n".join(x for x in (detail, question.get("note")) if x)[:4000])
+
+
+def _explain_current(thread_id: str, campaign_id: str, text: str) -> None:
+    context = _context_of(campaign_id)
+    stage = (store.get_thread(thread_id) or {}).get("stage", "intake")
+    low = text.lower()
+    if re.search(r"\b(?:cost|price|credit|allowance|budget|charge)\b", low):
+        capacity = usage.media_capacity()
+        detail = (f"The media allowance is lifetime: {capacity['remaining']} operations remain under both limits. "
+                  "One new still uses one operation; a canon anchor and sheet use two; video can require more. "
+                  "Existing matching images are reused. Text planning also has a separate metered allowance; media USD conversion is unknown.")
+    elif re.search(r"\b(?:model|provider)\b", low):
+        detail = f"The configured still-image route is {planned_model('image', tier='final')}; each generated asset records its actual provider and model. Asking this question generates nothing."
+    elif re.search(r"\b(?:brand|product|audience|platform|goal|objective|brief)\b", low):
+        c = context.campaign
+        detail = (f"Product: {context.product.name if context.product else 'not supplied'}; "
+                  f"brand: {context.brand.name if context.brand and context.brand.name else 'not supplied'}; "
+                  f"audience: {c.target_audience if c else 'not supplied'}; "
+                  f"goal: {c.objective if c else 'not supplied'}; placements: {', '.join(c.platforms) if c else 'not supplied'}. "
+                  "Tell me any correction in your own words; existing files stay in history.")
+    else:
+        detail = (f"The current step is {stage}. You can correct campaign facts at any time, describe a visual change, "
+                  "or answer the current question; new planning is reviewed before replacement media is generated. "
+                  "I have not changed or generated anything in response to this question.")
+    _reply_current(thread_id, "Here is the current campaign information; nothing was changed or generated.", detail)
+
+
+def _item_identity(ws: dict) -> dict:
+    return {i['slot']: i['asset_id'] for i in ws.get('items', [])}
+
+
+def _ask_asset_edit(thread_id: str, stage: str, note: str) -> None:
+    ws = _ws(thread_id)
+    if not ws.get('items'):
+        _hint(thread_id, "There is no rendered image to change yet; describe the desired board instead.")
+        return
+    store.save_checkpoint(thread_id, '_conversation_edit', {'stage': stage, 'note': note, 'assets': _item_identity(ws)})
+    _say(thread_id, "I saved the requested change; choose which image it applies to before rendering.",
+         question="Which image should I change?",
+         options=[{'label': 'Change '+item['slot'], 'event': 'edit_asset_'+item['slot'], 'artifact_id': 'creative', 'primary': len(ws['items']) == 1} for item in ws['items']],
+         note=note+" — Only the chosen item will be rendered; media allowance applies.")
+
+
+def _answer_current_question(thread_id: str, stage: str, text: str, ws: dict) -> Optional[dict]:
+    if _question_only(text): return None
+    low = text.lower().strip()
+    pending = store.load_checkpoint(thread_id, '_conversation_edit') or {}
+    if pending.get('stage') == stage and pending.get('assets') == _item_identity(ws):
+        slot = _asset_slot(text, ws)
+        if not slot:
+            for word, idx in (('first',0),('second',1),('third',2),('last',-1)):
+                if re.match(r'(?:the )?'+word+r'(?: one| image)?(?:[.!]?$|\s*[,;]?\s+(?:and|but|except)\b)', low) and len(ws.get('items',[])) > abs(idx if idx >= 0 else 0):
+                    slot = ws['items'][idx]['slot']; break
+        if slot:
+            # A selection can contain a further correction; keep both verbatim.
+            if re.search(r"\b(?:but|and|except)\b|\b(?:make|change|add|remove|replace)\b", low):
+                pending['note'] += "\nAdditional instruction: " + text
+                store.save_checkpoint(thread_id, '_conversation_edit', pending)
+            return {'event':'edit_asset_'+slot, 'artifact_id':'creative'}
+    question = _last_agent(thread_id).get('question') or {}
+    options = question.get('options') or []
+    if stage == 'intake' and question.get('multi'):
+        candidates = _claims_awaiting_confirmation(_context_of(campaign_id_of(thread_id)))
+        if low in ('none','none of them','no claims','use no claims','do not use any claims'):
+            return {'event':'confirm_claims_none','artifact_id':'intake'}
+        if low in ('all','all of them','confirm all','use all of them','yes all of them'):
+            return {'event':'confirm_claims','artifact_id':'intake','extra':candidates}
+        selected = [c for c in candidates if c.casefold() in low]
+        if selected and re.match(r'^(?:only |use |confirm |approve )',low):
+            return {'event':'confirm_claims','artifact_id':'intake','extra':selected}
+        if low in ('yes','go ahead','continue'):
+            return {'event':'explain','artifact_id':'intake','extra':'Which claims may I use?'}
+    # Natural approval answers the actual newest offered choice, not a stage
+    # approximation (capacity recovery and edit selection are not canon approval).
+    if re.fullmatch(r"(?:please )?(?:yes|yes please|go ahead|continue|proceed|sounds good|looks good|that works|let[’']s do it)[.!]?",low):
+        choices=[o for o in options if o.get('event') and o.get('primary')]
+        if len(choices)==1 and not question.get('multi'):
+            return {'event':choices[0]['event'],'artifact_id':choices[0].get('artifact_id') or 'current'}
+        if options and not question.get('multi'):
+            return {'event':'explain','artifact_id':'current','extra':'Which option should I choose?'}
+    return None
+
 def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str] = None) -> Optional[dict[str, Any]]:
     """Deterministic command grammar — buttons and typing emit identical
     events. No model is consulted for approvals, picks or counts."""
     low = text.lower().strip()
     if not low:
         return None
+    if _question_only(text):
+        return None
+    if low in ("thanks", "thank you", "ok", "okay", "got it", "not now"):
+        return {"event": "explain", "artifact_id": "current", "extra": text}
+    if low in ("retry", "retry please", "try again") and ws.get("retry"):
+        return {"event": "retry", "artifact_id": "recovery"}
     note = (_NOTE_RE.search(text).group(1).strip() if _NOTE_RE.search(text) else None)
     if re.search(r"\b(?:fal-ai/|(?:use|switch to)\s+(?:gpt-|claude-|veo|flux))", low):
         return None  # Model routing is configured by the operator, not prose.
 
+    # Never let an approval/skip/count prefix swallow a following correction.
+    # Options retain their explicit target below; other stages interpret the full
+    # original instruction and present the changed work for review first.
+    compound_change = re.search(r"\b(?:but|except|and)\s+(?:please\s+)?(?:make|change|add|remove|use|adjust|replace|keep|avoid|set)\b", low)
+    if stage not in ("intake", "options") and compound_change and re.match(r"^(?:yes|approve|accept|ship|go|continue|skip|use|pick|choose|generate|one|single)\b", low):
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
+
     # Gate approvals use the current stage, never a model or an earlier card.
-    approval = re.fullmatch(r"(?:please\s+)?(?:approve|approved|accept|accepted|looks good|look good|lgtm|yes|yes please|go ahead|continue|proceed)(?:\s+(?:it|this|the\s+)?(?:brief|script|board|canon|keyframes|all))?[.!]?", low)
+    approval = re.fullmatch(r"(?:please\s+)?(?:approve|approved|accept|accepted|looks good|look good|sounds good|that works|let[’\']s do it|lgtm|yes|yes please|go ahead|continue|proceed)(?:\s+(?:it|this|the\s+)?(?:brief|script|board|canon|keyframes|all))?[.!]?", low)
     gate = {
         "brief": ("approve_brief", "brief"), "script": ("approve_script", "script"),
         "detail": ("approve_board", "board"), "canon": ("approve_canon", "canon"),
@@ -873,14 +1078,18 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
     # "regenerate". Re-brief it rather than discarding the words after a command.
     identity_edit = re.search(
         r"\b(?:brand(?:\s+name)?\s*(?:is|:|-)\s*\S|(?:use|change|set|switch|update)\s+(?:the\s+)?brand\b|"
-        r"(?:change|switch|replace)\s+(?:the\s+)?product\s+(?:to|with)\b|audience|platform|objective)\b", low)
+        r"(?:change|switch|replace)\s+(?:the\s+)?product\s+(?:to|with)\b|audience|platform|objective|claims?|banned words?|avoid (?:the )?word|do not say|don't say)\b", low)
     if stage != "intake" and identity_edit:
         return {"event": "revise", "artifact_id": "intake", "extra": text}
+    if stage in ("detail", "keyframes", "generate") and ws.get("board") and _visual_edit(text):
+        return {"event": "edit_board", "artifact_id": "board", "extra": text}
     if stage == "canon":
         environments = [s for s in ws.get("canon", []) if s.get("kind") == "environment"]
         if _environment_edit(text) and len(environments) == 1:
             return {"event": "revise_environment", "artifact_id": environments[0]["id"], "extra": text}
-        return None  # A question or ambiguous target does not buy a new brief or render.
+        if _visual_edit(text) and ws.get("board"):
+            return {"event": "edit_board", "artifact_id": "board", "extra": text}
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
     if stage in ("brief", "script", "canon", "keyframes"):
         return {"event": "revise", "artifact_id": "intake", "extra": text}
 
@@ -895,10 +1104,14 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
 
     if stage == "options":
         target = _option_target(text, ws, panel_focus)
-        if (approval or re.match(r"^\s*(approve|accept|use|go with|pick|choose)\b", low)) and target:
+        if target and re.search(r"\b(?:but|except|and)\s+(?:please\s+)?(?:make|change|add|remove|use|adjust|replace)\b", low):
+            return {"event": "regenerate", "artifact_id": target, "extra": text}
+        if (approval or re.fullmatch(r"(?:please )?(?:approve|accept|use|go with|pick|choose) (?:the )?(?:first|second|third|last|o[123]|option [123])(?: one)?[.!]?", low)) and target:
             return {"event": "approve", "artifact_id": target}
         if re.match(r"^\s*(regenerate|regen|redo|rework|change|tweak|fix|feedback)\b", low) and target:
             return {"event": "regenerate", "artifact_id": target, "extra": note or text}
+        if target and re.fullmatch(r"(?:the )?(?:first|second|third|last|o[123]|option [123])(?: one)?[.!]?", low):
+            return {"event": "approve", "artifact_id": target}
         if target:
             return {"event": "regenerate", "artifact_id": target, "extra": note or text}
         if regenerate:
@@ -908,7 +1121,7 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
         return {"event": "revise", "artifact_id": "intake", "extra": text}
 
     if stage == "templates":
-        if "skip" in low or "no template" in low or "without" in low:
+        if re.fullmatch(r"(?:skip(?: templates?)?|no templates?(?: please)?|without (?:a )?template|continue without (?:a )?template)[.!]?", low):
             return {"event": "skip", "artifact_id": "templates"}
         for tpl in templates():
             if tpl["id"].lower() in low:
@@ -916,28 +1129,30 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
         return {"event": "revise", "artifact_id": "intake", "extra": text}
 
     if stage == "detail":
-        if ("generate" in low and "creative" in low) or low.strip() in ("generate", "go", "make it"):
+        if re.fullmatch(r"(?:generate(?: the)?(?: creative)?|go|make it)[.!]?", low):
             return {"event": "generate_creative", "artifact_id": "detail"}
         target = _detail_target(text, ws)
         if target:
+            if ws.get("board"):
+                return {"event": "edit_board", "artifact_id": "board", "extra": text}
             return {"event": "refine", "artifact_id": "detail", "extra": {"target": target, "note": text}}
         return {"event": "revise", "artifact_id": "intake", "extra": text}
 
     if stage == "generate":
         if approval:
             return {"event": "generate_single", "artifact_id": "confirm"}
-        if "draft" in low:
+        if re.fullmatch(r"(?:a |one |generate |make )?draft[.!]?", low):
             return {"event": "generate_draft", "artifact_id": "confirm"}
-        if "variant" in low or "test" in low:
+        if re.search(r"\bvariants?\b", low):
             count = _COUNT_RE.search(low)
             if not count:
                 return {"event": "generate_variants_0", "artifact_id": "confirm"}  # forces the count question
             return {"event": f"generate_variants_{count.group(1)}", "artifact_id": "confirm"}
-        if any(w in low for w in ("single", "one creative", "just one", "one only")) or low.strip() in ("1", "one"):
+        if re.fullmatch(r"(?:generate )?(?:single|one creative|just one|one only|1|one)[.!]?", low):
             return {"event": "generate_single", "artifact_id": "confirm"}
-        return None
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
 
-    if stage in ("creative", "done"):
+    if stage in ("creative", "qc", "done"):
         if re.match(r"^(?:please\s+)?(?:use|set)\b.+\bas (?:a )?reference\b", low):
             slot = _asset_slot(text, ws)
             if slot:
@@ -947,8 +1162,8 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
             slot = _asset_slot(text, ws) or (ws["items"][0]["slot"] if len(ws["items"]) == 1 else None)
             if slot:
                 return {"event": f"reroll_{slot}", "artifact_id": "creative", "extra": note or text}
-            return None
-        if approval or re.match(r"^\s*(accept|approve|ship|lgtm)\b", low):
+            return {"event": "clarify_asset", "artifact_id": "creative", "extra": text}
+        if approval or re.fullmatch(r"(?:ship|ship it)[.!]?", low):
             return {"event": "accept_all", "artifact_id": "creative"}
         if re.fullmatch(r"(?:mark (?:it |this )?live|(?:it is |it's )?live|posted|i posted it)[.!]?", low):
             card_id = ws["cards"][-1] if ws["cards"] else "card"
@@ -957,11 +1172,12 @@ def _parse(stage: str, text: str, ws: dict[str, Any], panel_focus: Optional[str]
             return {"event": "next_creative", "artifact_id": "card"}
         # Questions and commentary are not permission to buy another render.
         edit = re.match(r"^(?:(?:please|can you|could you)\s+)?(?:make|change|adjust|add|remove|brighten|darken|crop|enlarge|shrink|move|replace|reduce|increase)\b\s+\S", low)
-        if stage == "creative" and edit:
+        if edit:
             slot = _asset_slot(text, ws) or (ws["items"][0]["slot"] if len(ws["items"]) == 1 else None)
             if slot:
                 return {"event": f"reroll_{slot}", "artifact_id": "creative", "extra": text}
-        return None
+            return {"event": "clarify_asset", "artifact_id": "creative", "extra": text}
+        return {"event": "revise", "artifact_id": "intake", "extra": text}
 
     return None
 
@@ -1029,7 +1245,7 @@ def _hint(thread_id: str, text: str) -> None:
              question="Approve the current sheets, skip them, or describe one background change?",
              note="An explicit background correction renders its anchor and sheet; other sheets stay unchanged.")
         return
-    _say(thread_id, "I need a little more detail to make that change.", question=text)
+    _reply_current(thread_id, "I need a little more detail to make that change.", text)
 
 
 def _environment_edit(text: str) -> bool:
@@ -1068,6 +1284,7 @@ def _upload_images(upload_ids: list[str]) -> list[dict[str, Any]]:
 
 
 def _literal_brand_name(text: str) -> Optional[str]:
+    text = re.sub(r"^\s*(?:the\s+)?brand(?:\s+name)?\s+is\s+", "use brand ", text, flags=re.IGNORECASE)
     match = re.fullmatch(
         r"\s*(?:please\s+)?(?:regenerate\s+and\s+)?(?:use|change|set|switch|update)\s+(?:the\s+)?brand(?:\s+name)?\s*(?:(?:to|as|is)\s+|[-:]\s*)?([\w][\w '&.-]{0,119}?)\s*[.!]?\s*",
         text, re.IGNORECASE)
@@ -1094,16 +1311,62 @@ def _revise_turn(thread_id: str, campaign_id: str, text: str) -> None:
             # audience, objective, platforms, or previously confirmed claims.
             context = current.model_copy(update={"brand": (current.brand or BrandBlock()).model_copy(update={"name": brand_name})})
         else:
-            context, _ = run_agent(
-                agent="campaign_intake.revise", prompt_name="campaign_intake",
+            def validate_reply(result):
+                candidate = result.context
+                # A user can revise claim candidates in chat, but neither an
+                # interpretation nor the change itself grants claim approval.
+                if result.intent == "context" and current.brand and candidate.brand:
+                    claim_request = bool(re.search(r"\bclaims?\b", text, re.IGNORECASE))
+                    words_request = bool(re.search(r"\b(?:banned words?|avoid (?:the )?word|do not say|don't say)\b", text, re.IGNORECASE))
+                    preserved = {}
+                    if claim_request:
+                        preserved.update(approved_claims=current.brand.approved_claims,
+                                         claims_confirmed=current.brand.claims_confirmed)
+                        if candidate.brand.approved_claims != current.brand.approved_claims:
+                            candidate.brand.claims_confirmed = False
+                        else:
+                            candidate.brand.claims_confirmed = current.brand.claims_confirmed
+                    if words_request:
+                        preserved['banned_words'] = current.brand.banned_words
+                    if preserved:
+                        candidate = candidate.model_copy(update={"brand": candidate.brand.model_copy(update=preserved)})
+                _validate_intake(candidate, current)
+                if result.intent != "context" and result.context != current:
+                    raise AgentValidationError(["Only an explicit context correction may alter saved campaign facts"])
+                return result
+            update, _ = run_agent(
+                agent="campaign_conversation", prompt_name="campaign_conversation",
                 model=config.STAGE_MODELS["intake"],
                 user_payload={"context": current.model_dump(mode="json"), "message": text,
-                              "transcript": _transcript(thread_id), "filled": context_filled(current),
+                              "stage": (store.get_thread(thread_id) or {}).get("stage"),
+                              "current_question": (_last_agent(thread_id).get("question") or {}).get("text"),
+                              "transcript": _transcript(thread_id),
                               "attached_upload_ids": list(_ws(thread_id).get("pending_uploads") or [])},
-                schema=CampaignContext, dispatcher=None, use_tools=False,
-                validate=lambda c: _validate_intake(c, current),
-                mock_fn=campaign_mock.mock_campaign_intake)
+                schema=CampaignConversation, dispatcher=None, use_tools=False,
+                validate=validate_reply, mock_fn=campaign_mock.mock_campaign_conversation,
+                extra_content_blocks=_upload_images(list(_ws(thread_id).get("pending_uploads") or [])))
+            context = update.context
+            if update.intent in ("question", "unclear") and not _ws(thread_id).get("pending_uploads"):
+                _reply_current(thread_id, "Your saved campaign is unchanged.", update.reply or "Tell me which fact or visual detail you want to change.")
+                return
+            if update.intent == "creative" and not _ws(thread_id).get("pending_uploads"):
+                ws = _ws(thread_id)
+                stage = (store.get_thread(thread_id) or {}).get("stage")
+                if ws.get("items") and stage in ("creative", "qc", "done"):
+                    _ask_asset_edit(thread_id, stage, text)
+                elif ws.get("board"):
+                    _board_turn(thread_id, campaign_id, text)
+                elif stage == "script":
+                    _script_turn(thread_id, campaign_id, text)
+                else:
+                    ws["revision_note"] = text
+                    _brief_turn(thread_id, campaign_id)
+                return
         context = _apply_pending_uploads(thread_id, context)
+        if context == current:
+            _reply_current(thread_id, "Your saved campaign facts are unchanged.",
+                           "Describe the detail to change, or continue with the current review; no planning or images were repeated.")
+            return
         store.update_series_context(campaign_id, context.model_dump(mode="json"))
         ws = _ws(thread_id)
         _reset_creative(ws)
@@ -2773,6 +3036,79 @@ def _seed_url(asset_id: str, asset: dict[str, Any]) -> Optional[str]:
     return (asset.get("params") or {}).get("url")
 
 
+def _photo_context_sha(context: CampaignContext) -> str:
+    return hashlib.sha256(json.dumps(context.model_dump(mode="json"), sort_keys=True).encode()).hexdigest()
+
+
+def _current_reroll_photo(thread: dict, pending: dict) -> bool:
+    return bool(pending and pending.get("slot") in _item_identity(_ws(thread["id"]))
+                and pending.get("stage") == thread["stage"]
+                and pending.get("asset_id") == _item_identity(_ws(thread["id"])).get(pending.get("slot"))
+                and pending.get("context_sha") == _photo_context_sha(_context_of(thread["series_id"])))
+
+
+def _neutral_photo_reply(text: str) -> bool:
+    return bool(re.fullmatch(r"(?:please )?(?:attached|here|here it is|here is the photo|photo attached|image attached|uploaded|go ahead|continue|yes)?[.!]?", text.strip(), re.IGNORECASE))
+
+
+def _remember_reroll_photo(thread: dict, slot: str, note: Optional[str]) -> None:
+    item = next((i for i in _ws(thread["id"])["items"] if i["slot"] == slot), None)
+    if not item or thread["stage"] not in ("creative", "generate", "qc", "done"):
+        return
+    store.save_checkpoint(thread["id"], "_reroll_photo", {
+        "stage": thread["stage"], "slot": slot, "asset_id": item["asset_id"], "note": note,
+        "context_sha": _photo_context_sha(_context_of(thread["series_id"])), "reference_ready": False})
+    _say(thread["id"], "The edit is saved, but it needs an available product photo; no rendering has started.",
+         question="Attach the product photo with ‘attached’ or ‘go ahead’; I will offer a separate render confirmation.")
+
+
+def _attach_reroll_photo(thread: dict, upload_ids: list[str], text: str) -> bool:
+    """Supply one missing input for an unchanged, already requested edit, not a replan."""
+    thread_id = thread["id"]
+    pending = store.load_checkpoint(thread_id, "_reroll_photo") or {}
+    if not pending:
+        return False
+    if not _neutral_photo_reply(text):
+        store.save_checkpoint(thread_id, "_reroll_photo", {})
+        return False  # Meaningful instructions still use the ordinary conversation path.
+    if not _current_reroll_photo(thread, pending):
+        store.save_checkpoint(thread_id, "_reroll_photo", {})
+        _ws(thread_id)["pending_uploads"] = []
+        _reply_current(thread_id, "That saved edit is no longer current; tell me how to use this photo.")
+        return True
+    from app.execution import fixture_mode, is_cached
+    context = _context_of(thread["series_id"])
+    ids = list(dict.fromkeys(upload_ids))
+    rows = {row["id"]: row for row in store.get_uploads(ids)}
+    def available(row):
+        return bool(row and row.get("content_type") in ("image/png", "image/jpeg", "image/webp")
+                    and (row.get("storage_ref") or config.MOCK_MEDIA or is_cached() or fixture_mode()))
+    if not context.product or not ids or len(ids) > 8 or not all(available(rows.get(uid)) for uid in ids):
+        _ws(thread_id)["pending_uploads"] = []
+        _say(thread_id, "That photo is unavailable to this account; the saved edit has not run.",
+             question="Attach an available PNG, JPEG or WebP product photo?")
+        return True
+    old_rows = {row["id"]: row for row in store.get_uploads(context.product.image_upload_ids)}
+    kept = [uid for uid in context.product.image_upload_ids if available(old_rows.get(uid))]
+    merged = list(dict.fromkeys(kept + ids))
+    if len(merged) > 8:
+        _say(thread_id, "There are too many product references; the edit has not run.", question="Use at most eight product photos?")
+        return True
+    context = context.model_copy(update={"product": context.product.model_copy(update={"image_upload_ids": merged})})
+    store.update_series_context(thread["series_id"], context.model_dump(mode="json"))
+    _ws(thread_id)["pending_uploads"] = []
+    pending.update(context_sha=_photo_context_sha(context), reference_ready=True)
+    store.save_checkpoint(thread_id, "_reroll_photo", pending)
+    item = next(i for i in _ws(thread_id)["items"] if i["slot"] == pending["slot"])
+    operations = 2 if item.get("kind") == "video" or item.get("cover_asset_id") else 1
+    _say(thread_id, "The product photo is attached and your current direction is unchanged; nothing has been rendered.",
+         [ArtifactEnvelope(type="escalation", id="resume_image_edit", title="Product photo added",
+             payload={"reason": f"The saved edit needs {operations} media operation(s); the normal lifetime allowance applies.", "note": pending.get("note") or "Re-render the same creative."},
+             actions=_actions(("resume_photo_reroll", "Retry this image" if operations == 1 else "Retry this creative", "primary")))],
+         question="Apply the saved edit to this creative now?")
+    return True
+
+
 def _require_product_photo(thread_id: str, context: CampaignContext) -> bool:
     """Older live campaigns must supply an owned photo before any new render."""
     from app.execution import fixture_mode, is_cached
@@ -3032,6 +3368,9 @@ def _reroll_turn(thread_id: str, slot: str, note: Optional[str]) -> None:
         campaign_id = ws["campaign_id"]
         context = _context_of(campaign_id)
         if not _require_product_photo(thread_id, context):
+            thread = store.get_thread(thread_id)
+            if thread:
+                _remember_reroll_photo(thread, slot, note)
             return
         detail = ws["detail"]
         spec = next((s for s in ws["variant_specs"] if s["variant_id"] == item["variant_id"]), None) \
@@ -3093,6 +3432,8 @@ def _reroll_turn(thread_id: str, slot: str, note: Optional[str]) -> None:
         ws["items"] = [new_item if i["slot"] == slot else i for i in ws["items"]]
         ws["assets"][slot] = new_item["asset_id"]
         ws["accepted"].discard(slot)
+        ws["qc"] = None
+        store.set_thread_stage(thread_id, "creative")
         store.log_artifact_activity(thread_id, "creative", "refined", f"{slot} re-rolled")
         _say(thread_id, f"{slot} re-rolled — only that slot changed.",
              [_creative_artifact([new_item], ws.get("variant_group_id"))],
@@ -3706,7 +4047,7 @@ def _brief_turn(thread_id: str, campaign_id: str) -> None:
         _working.pop(thread_id, None)
 
 
-def _script_turn(thread_id: str, campaign_id: str) -> None:
+def _script_turn(thread_id: str, campaign_id: str, feedback: Optional[str] = None) -> None:
     """v3 §4 — the w/s lint runs here, before anything has been paid for."""
     try:
         _working[thread_id] = "writing the script"
@@ -3716,7 +4057,8 @@ def _script_turn(thread_id: str, campaign_id: str) -> None:
         rack, _log = run_agent(
             agent="hook_rack", prompt_name="hook_rack", model=config.STAGE_MODELS["script"],
             user_payload={"brief": brief, "option": _approved_option_json(ws),
-                          "hooks_wanted": _policy_of(campaign_id).hooks_count},
+                          "hooks_wanted": _policy_of(campaign_id).hooks_count,
+                          "previous_rack": ws.get("hook_rack") if feedback else None, "user_feedback": feedback},
             schema=HookRack, dispatcher=None, use_tools=False,
             # The W1 table is INJECTED from the constant the check reads. Never
             # hand-copied — that is the R2 lexicon bug's exact shape.
@@ -3751,7 +4093,7 @@ def _script_turn(thread_id: str, campaign_id: str) -> None:
         _working.pop(thread_id, None)
 
 
-def _board_turn(thread_id: str, campaign_id: str) -> None:
+def _board_turn(thread_id: str, campaign_id: str, feedback: Optional[str] = None) -> None:
     """v3 §5 — THE LAST FREE GATE. Everything after it derives from this."""
     try:
         _working[thread_id] = "building the shot board"
@@ -3764,6 +4106,8 @@ def _board_turn(thread_id: str, campaign_id: str) -> None:
                    "hook_rack": ws.get("hook_rack"), "style_block_id": style.get("id"),
                    "available_routes": sorted(config.MEDIA_MODELS),
                    "approved_claims": sorted(_confirmed_claims(_context_of(campaign_id)))}
+        if feedback:
+            payload.update(previous_board=ws.get("board"), user_feedback=feedback)
         from app.agents.runner import build_system
         replacements = {"ref_slots": ref_slots_text()}
         system, _version = build_system("shot_board", replacements)
@@ -3785,6 +4129,11 @@ def _board_turn(thread_id: str, campaign_id: str) -> None:
             # Only explicit Retry with identical inputs can reuse this owner's output.
             store.save_checkpoint(thread_id, "_board_output", {
                 "input_sha256": input_sha, "board": board.model_dump(mode="json")})
+        if feedback:
+            board.version = int((ws.get("board") or {}).get("version", 1)) + 1
+            ws.update(keyframes=None, items=[], assets={}, accepted=set(), qc=None,
+                      ratios=[], variant_specs=[], variant_group_id=None, variant_count=1, reference=None)
+            ws["prompts"].clear()
         ws["board"] = board.model_dump(mode="json")
         # The board is the SOURCE OF TRUTH; `detail` is its projection into the
         # shape the generate path already speaks. Projected, never authored
@@ -3801,6 +4150,7 @@ def _board_turn(thread_id: str, campaign_id: str) -> None:
                  # speaking the pre-v3 shape keeps working — consistent by
                  # construction, because it is derived rather than authored.
                  payload={"board": ws["board"], "detail": ws["detail"],
+                          "reset_outputs": bool(feedback),
                           "style_block": style, "media_plan": _media_plan(ws["board"], campaign_id, thread_id)},
                  actions=_actions(("approve_board", "Approve board", "primary"),
                                   ("regenerate_board", "Regenerate", "secondary")))],

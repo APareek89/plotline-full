@@ -1,5 +1,5 @@
 %% granularity: full
-%% files: app/campaign.py, app/examples.py, app/threadkit.py, app/agents/runner.py, app/agents/providers.py, app/config.py, app/usage.py, app/media.py, ../web/app/studio/thread/[threadId]/page.tsx
+%% files: prompts/campaign_conversation.md, prompts/shot_board.md, prompts/hook_rack.md, app/campaign.py, app/examples.py, app/threadkit.py, app/agents/runner.py, app/agents/providers.py, app/config.py, app/usage.py, app/media.py, ../web/app/studio/thread/[threadId]/page.tsx
 %% Current conversation-only flow. Configurable model defaults are shown, not a claim of paid acceptance.
 flowchart TB
   NAME["Start campaign [FUNCTION]<br/>in: product photo, one-line prompt and verified owner<br/>out: owned campaign and thread"]
@@ -25,14 +25,30 @@ flowchart TB
   DONE["Deliver [FUNCTION]<br/>in: cleared QC and explicit delivery action<br/>out: owned AdCard and private downloadable bundle"]
   JOB["Background job admission [FUNCTION]<br/>in: actor and allowlisted operation<br/>out: at most1 job per thread,2 per owner,4 per process"]
   RECOVER["Interrupted-step recovery [FUNCTION]<br/>in: persisted allowlisted job and current owner<br/>out: explicit Retry warning, never automatic replay"]
-  NAME --> MODE
+  TURN["Conversation router [FUNCTION]<br/>in: original user text, current question and owner state<br/>out: exact approval, information or correction intent"]
+  INFO["Current-state answer [FUNCTION]<br/>in: saved facts, allowance or actual model settings<br/>out: current actions retained; no provider or mutation"]
+  INTERPRET["Conversation interpretation [AGENT · intake model]<br/>in: full context, original words and current question<br/>out: validated context, creative, question or unclear result"]
+  REVISE["Apply correction [FUNCTION]<br/>in: changed facts or full creative feedback<br/>out: authoritative board/script/brief update; derived approvals invalidated, files retained"]
+  PICK["Choose edited image [FUNCTION]<br/>in: original note and current owned asset IDs<br/>out: durable selection question; combined verbatim reply after restart"]
+  PHOTO["Missing-photo continuation [FUNCTION]<br/>in: saved exact edit, stage/asset/context fingerprint and owned upload<br/>out: attach only prerequisite; separate explicit render confirmation, no LLM"]:::fn
+  CREATIVE -.->|"reroll lacks product photo; no dispatch"| PHOTO --> ASK
+  TURN -->|"neutral photo reply for unchanged saved edit"| PHOTO
+  NAME --> TURN --> MODE
+  ASK -.->|"reply at any stage"| TURN
+  TURN -->|"informational question"| INFO --> ASK
+  TURN -->|"late facts or informal feedback"| INTERPRET
+  INTERPRET -->|"question or no change"| INFO
+  INTERPRET -->|"changed planning"| REVISE --> BRIEF
+  INTERPRET -->|"ambiguous rendered target"| PICK --> ASK
+  TURN -->|"clear board correction"| REVISE
+  REVISE -.->|"board source and detail agree; review"| DETAIL
+  TURN -->|"selected edit; current asset IDs still match"| JOB
   SAMPLE --> MODE
   MODE -->|"mock or stored cached"| FIX --> VALIDATE
   MODE -->|"live"| RESERVE --> LLM --> VALIDATE
   LLM -->|"allowed tool request"| TOOLS --> LLM
   VALIDATE --> INTAKE
   INTAKE -->|"missing"| ASK
-  ASK -.->|"next typed reply retains context"| MODE
   INTAKE -->|"ready; ordinary yes or go ahead"| BRIEF
   BRIEF -->|"approve"| OPTIONS -->|"approve direction"| DETAIL
   CAPACITY{"Whole-path media preflight [FUNCTION]<br/>in: owned saved outputs, plan and lifetime headroom<br/>out: enough capacity for remaining canon and keyframes?"}
@@ -64,5 +80,6 @@ flowchart TB
   class NAME,SAMPLE,FIX,RESERVE,TOOLS,VALIDATE,BRIEF,OPTIONS,DETAIL,CANON,ENV,CONFIRM,MEDIA,CREATIVE,QC,JOB,SMALL,SAVED fn;
   class MODE,INTAKE,KEYFRAME,CAPACITY dec;
   class ASK,RECOVER ask;
-  class LLM agent;
+  class LLM,INTERPRET agent;
+  class TURN,INFO,REVISE,PICK fn;
   class DONE term;

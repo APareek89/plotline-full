@@ -1,0 +1,38 @@
+{
+  "status": "frozen",
+  "scope": "final conversational/photo recovery docs and root-operated one-image verification",
+  "last_synced": "70794645f0d58093e6cf75c91a4004cfa2321eb6",
+  "files": [
+    {
+      "path": "api/Handoff.MD",
+      "sha256": "0e6d426dd15ce8ab751e4dca5c9aba22b08441f52c0e36e73b146a641e20786b"
+    },
+    {
+      "path": "api/Learning.MD",
+      "sha256": "f2f422fb5ee43e74f788772f8ce577cae8f6186c77604c171d72e0a60d3dd9cb"
+    },
+    {
+      "path": "docs/qa/2026-10-02/REPORT.md",
+      "sha256": "dc245915b8bcb3ca2c0991134f2c95c2a40f91bb56709f0c413e9d242b332e89"
+    },
+    {
+      "path": "docs/qa/2026-10-02/conversation-live-verification.json",
+      "sha256": "3d0e4183a8f338a0e75670febc119856035585d2fc626e43355486b7c76b7a00"
+    },
+    {
+      "path": "api/docs/mermaid/10-agentic-flow.mmd",
+      "sha256": "a27243fd59aa5b345f70be7dba0f0335f23bf95ee44d5e7290976585a948a92b"
+    }
+  ],
+  "diagram": "Mermaid parser passed with syntax-only DOMPurify shim; rendering not tested",
+  "local_tests": {
+    "passed": 387,
+    "skipped": 4,
+    "skip_reason": "local ffmpeg absent"
+  },
+  "new_paid_requests": 1,
+  "new_paid_text_requests": 0,
+  "credits": 1,
+  "media_usd": null,
+  "provider_operator": "root only"
+}

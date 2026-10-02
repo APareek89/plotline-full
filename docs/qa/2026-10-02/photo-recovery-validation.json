@@ -1,0 +1,33 @@
+{
+  "status": "passed",
+  "scope": "Missing-product-photo reroll recovery only; no provider validation",
+  "tests": {
+    "full_passed": 387,
+    "full_skipped": 4,
+    "skip_scope": "unchanged local ffmpeg availability",
+    "focused_passed": 9
+  },
+  "provider_calls": 0,
+  "production_mutations": 0,
+  "cases": [
+    "restart before photo and confirmation",
+    "original note and direction preserved",
+    "one synthetic image only after explicit action",
+    "duplicate action denied",
+    "stage/asset/context invalidation",
+    "unavailable/foreign photo denied",
+    "new facts use ordinary revision",
+    "selected conversational edit retained",
+    "direct retry retains prerequisite"
+  ],
+  "source": [
+    {
+      "path": "api/app/campaign.py",
+      "sha256": "5c736495955ed6f3c410bd7971ece5226ed3883f58ee72eeca5a547fd109ed2b"
+    },
+    {
+      "path": "api/tests/test_reroll_photo_recovery.py",
+      "sha256": "a876b80c6a63c9fe4136ea28e31b7a0d914a5edd4b1ab09a8d8b9511fd4f2f6e"
+    }
+  ]
+}

@@ -86,6 +86,14 @@ def mock_campaign_intake(payload: dict[str, Any], dispatcher: Optional[ToolDispa
     return context
 
 
+
+def mock_campaign_conversation(payload: dict[str, Any], dispatcher: Optional[ToolDispatcher]) -> dict:
+    """Labelled native mock only; nuanced conversation tests supply session outputs."""
+    current = payload["context"]
+    parsed = mock_campaign_intake(payload, dispatcher)
+    return {"intent": "context" if parsed != current else "unclear", "context": parsed,
+            "reply": "Tell me the specific campaign fact or visual detail to change."}
+
 def _assume_intake(context: dict[str, Any], transcript: list[str]) -> dict:
     """Join user fragments; make only absent required fields explicit guesses.
 

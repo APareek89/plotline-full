@@ -58,7 +58,7 @@
         "include_rpn": true,
         "include_recommended_actions": true,
         "include_priority_badges": true,
-        "max_failure_modes": 120
+        "max_failure_modes": 127
       }
     },
     "sentinel": {

@@ -1,0 +1,44 @@
+{
+  "status": "docs_frozen_pending_root_release",
+  "at": "2026-10-02T08:17:41.963443+00:00",
+  "source_base": "7079464",
+  "provider_calls": 0,
+  "files": [
+    {
+      "path": "api/Handoff.MD",
+      "sha256": "57b1460110e658918563d43eb4e9d29d46260c9494700e0b0d0efa24253e1a86"
+    },
+    {
+      "path": "api/Learning.MD",
+      "sha256": "682cdf0afb3634437c4b7e2bb59d0aba17c5b58f71dd98cefe82474ce4c71e57"
+    },
+    {
+      "path": "api/.power-coding/config.json",
+      "sha256": "53fb9fd48fc6b558558d6fbbd089650481a7531c1063e4c1325a466de968c159"
+    },
+    {
+      "path": "api/docs/mermaid/10-agentic-flow.mmd",
+      "sha256": "c9f737110f3e02b02dc8415dfa6194212509e7801e52be692e1d601a350e38d2"
+    },
+    {
+      "path": "docs/qa/2026-10-02/REPORT.md",
+      "sha256": "02bfa47bbe3b573aa4361e7cfd1b425fbe784c29f45e5923188f8f5e0efa9997"
+    },
+    {
+      "path": "docs/qa/2026-10-02/build_fmea.py",
+      "sha256": "7dfe0d3ea284486af07193185d91e138222c99e5beb53b15c77cfefd5d917fc0"
+    },
+    {
+      "path": "docs/qa/2026-10-02/fmea.json",
+      "sha256": "90c5306b84c83afc0dc96b662eabefb9d20847823be155672182d85eb1904317"
+    },
+    {
+      "path": "docs/qa/2026-10-02/fmea.csv",
+      "sha256": "4646459826e84104a7f389147283f329fd68662e9b37c72ece9b2b36356cb6b7"
+    },
+    {
+      "path": "docs/qa/2026-10-02/conversation-validation.json",
+      "sha256": "7771e6f0cb6fd338f0ae96a6de5c2c793502374541a2c4e92bc54cac1f14a545"
+    }
+  ]
+}

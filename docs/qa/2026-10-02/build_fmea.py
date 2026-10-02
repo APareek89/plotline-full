@@ -185,11 +185,38 @@ rows.append({'id':'PL-FMEA-115','category':'retry_idempotency_issues',
              {'path':'web/app/studio/thread/[threadId]/page.tsx','kind':'current non-Retry action choices take precedence over the generic recovery banner'},
              {'path':'docs/qa/2026-10-02/recovery-priority.json','kind':'isolated synthetic failed-job fixture and root browser acceptance'}],
  'recommended_action':'Show current non-Retry recovery choices while retaining the failed job and historical usage; keep the generic Retry banner for legacy Retry-only or free-text asks. No provider dispatch is needed to review saved references.'})
+for number,category,scenario,test_name,sod in [
+ (116,'billing_credit_mismatches','An informational question containing audience or edit words starts replanning or media','test_information_questions_at_every_stage_never_mutate_or_dispatch',(8,6,5)),
+ (117,'edge_cases_from_prd','A late factual correction at a later campaign stage is ignored or loses unrelated context','test_late_facts_at_every_stage_use_actual_conversation_prompt_and_preserve_other_fields',(7,7,5)),
+ (118,'data_integrity_partial_writes','Approval prefix discards an accompanying correction and advances unchanged work','test_approval_plus_change_never_dispatches_approval_first',(8,7,6)),
+ (119,'data_integrity_partial_writes','A visual correction updates only detail while paid generation still reads the old board','test_board_edit_changes_source_and_projection_then_survives_restart',(9,6,7)),
+ (120,'retry_idempotency_issues','A multi-image clarification loses original feedback or additional selection words','test_informal_creative_feedback_uses_actual_prompt_then_requests_item_choice',(8,6,6)),
+ (121,'race_conditions_and_state','A delivered-image correction cannot restart review or erases earlier deliverables','test_delivered_multi_image_feedback_keeps_verbatim_note_across_question_and_reload',(8,5,6)),
+ (122,'edge_cases_from_prd','A plain yes answers a stage default rather than the current saved-reference question','test_current_capacity_question_yes_means_saved_reference_review_not_canon_approval',(8,6,6)),
+ (123,'security_access_control','A late claim edit is blocked outright or becomes implicitly approved for advertising','test_late_claim_change_returns_to_explicit_confirmation_not_automatic_approval',(9,4,6)),
+ (124,'data_integrity_partial_writes','New product uploads change context without invalidating approved derived outputs','test_late_upload_invalidates_outputs_only_after_valid_context_and_keeps_paid_files',(9,5,7)),
+ (125,'race_conditions_and_state','Input sent during active work silently changes its inputs or falsely claims application','test_busy_turn_is_durable_but_not_silently_applied',(8,4,6)),
+ (126,'unhandled_error_paths','A no-op or ambiguous conversational response clears paid state and checkpoints','test_noop_interpretation_does_not_clear_current_state_or_checkpoints',(8,5,6))]:
+    path,line=tests[test_name];S,O,D=sod
+    rows.append({'id':f'PL-FMEA-{number:03}','category':category,'failure_scenario':scenario,
+      'classification':'demonstrated_issue','status':'fixed','severity':S,'occurrence':O,'detection':D,
+      'rpn':S*O*D,'priority':'P0' if S*O*D>=200 else 'P1',
+      'evidence':[{'path':path,'line':line,'symbol':test_name,'kind':'provider-denied actual driver; session-authored structured output where model interpretation is required'},
+                  {'path':'docs/qa/2026-10-02/conversation-validation.json','kind':'final guarded suite and runtime source hashes'}],
+      'recommended_action':'Retain the free regression; root reviews and deploys this conversational delta, then independently performs the single authorized paid check. Do not infer provider quality from authored responses.'})
+name='test_photo_only_recovery_preserves_direction_restart_and_explicit_one_render'
+path,line=tests[name]
+rows.append({'id':'PL-FMEA-127','category':'retry_idempotency_issues',
+ 'failure_scenario':'A missing product photo blocks an existing reroll but supplying that prerequisite forces a paid replan and discards the selected edit',
+ 'classification':'demonstrated_issue','status':'fixed','severity':8,'occurrence':6,'detection':6,'rpn':288,'priority':'P0',
+ 'evidence':[{'path':path,'line':line,'symbol':name,'kind':'actual driver and store with production photo gate, authored media, restart and unchanged old assets'},
+             {'path':'docs/qa/2026-10-02/photo-recovery-validation.json','kind':'nine focused recovery contracts and guarded full suite'}],
+ 'recommended_action':'Persist the exact existing edit, stage, asset and context fingerprint; a neutral owned-photo reply adds only the missing reference and offers a separate explicit retry. New facts re-enter conversation; stale or foreign references never dispatch.'})
 assert len(rows)>=100 and len(set(r['failure_scenario'] for r in rows))==len(rows)
 report={'date':'2026-10-02','scope':'Plotline; free code/API/browser QA plus provider-free release operations; no paid model calls',
  'base_commit':'3cec470','count':len(rows),'categories':len(GROUPS),
  'scoring':'S/O/D use 1–10 expert ordinal estimates (not measured occurrence rates); high detection score means difficult to detect. RPN=S×O×D ranks pre-control review risk. A P0 risk scenario is not a claim of a P0 vulnerability. Status is evidence-specific, not production certification.',
- 'status_definitions':{'mitigated':'observed operational failure relieved with recorded controls; permanent automation not claimed','fixed':'demonstrated issue changed locally with cited regression or factual metadata correction; deployment pending','passing':'cited automated contract passes locally under denied provider transport; not external model validation','checked':'source control inspected; scenario not independently exercised here','unverified':'requires real provider, scale, or destructive fault injection not authorized in this free review'},
+ 'status_definitions':{'mitigated':'observed operational failure relieved with recorded controls; permanent automation not claimed','fixed':'demonstrated issue corrected with cited regression; earlier release is deployed, newest conversational delta remains pending root release (see conversation-validation.json)','passing':'cited automated contract passes locally under denied provider transport; not external model validation','checked':'source control inspected; scenario not independently exercised here','unverified':'requires real provider, scale, or destructive fault injection not authorized in this free review'},
  'cases':rows}
 (OUT/'fmea.json').write_text(json.dumps(report,indent=2)+'\n')
 with (OUT/'fmea.csv').open('w',newline='') as file:

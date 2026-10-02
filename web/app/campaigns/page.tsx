@@ -52,6 +52,7 @@ export default function CampaignsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(() => {
     api.campaigns
@@ -60,7 +61,8 @@ export default function CampaignsPage() {
         setRows(r);
         setOffline(false);
       })
-      .catch(() => setOffline(true));
+      .catch(() => setOffline(true))
+      .finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -178,6 +180,7 @@ export default function CampaignsPage() {
       {error && <div className="mt-4"><ErrorStrip>{error}</ErrorStrip></div>}
 
       <p className="mb-3.5 mt-5 text-[14px] font-semibold">My campaigns</p>
+      {!loaded && <p role="status" className="mb-4 text-sm text-[var(--ms-text-2)]">Loading your campaigns…</p>}
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(212px,1fr))] gap-x-5 gap-y-6">
         {/* New campaign — the ONLY form in the product is its name */}
@@ -258,7 +261,7 @@ export default function CampaignsPage() {
         ))}
       </div>
 
-      {shown.length === 0 && (
+      {loaded && !offline && shown.length === 0 && (
         <p className="mt-10 text-[13.5px] text-[var(--ms-text-2)]">
           {query.trim()
             ? `Nothing matches “${query.trim()}”.`

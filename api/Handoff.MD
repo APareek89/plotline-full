@@ -1,43 +1,41 @@
 # Plotline — current handoff
-review-base: `3cec470`; release verified 2026-10-02 (image receipts in `../docs/qa/2026-10-02/aws-release.json`)
+last-synced: `7079464`; conversational follow-up 2026-10-02
 
-## State — 2026-10-02
-The fixes are deployed on AWS after free FMEA, tests and browser QA. Paid verification requires the user’s explicit approval.
-Final API image a843bc7c97a0; web image 577ebba4da11. Authentication/live modes, environment, mounts and quota settings are preserved; usage and saved assets are unchanged.
-The screenshot campaign has six completed media jobs/three canon pairs, owner lifetime allowance exhausted, shared18/20; two keyframes remain.
-Exact historical exception was not retained; current quota impossibility and renamed-reference retry risk are demonstrated.
-Prior live image-flow acceptance remains historical; it does not prove this new campaign or branch complete.
+## Current state
+Conversational/photo recovery release is live; exact API/web images and final proof are in `../docs/qa/2026-10-02/conversation-live-verification.json`.
+Root completed the one authorized ordinary image edit, acceptance, QC and delivery; all runtime changes are frozen.
+Root alone deploys, operates the browser and dispatches that paid request; this workstream made no provider or production request.
+The affected screenshot owner still has six successful media jobs/three canon pairs and an exhausted lifetime allowance; no credits/history were reset.
+The separate normal QA owner supplied a product photo, explicitly retried one image and delivered it without a cap increase.
 
-## Local fixes
-Single stills no longer inherit video minimum-shot/screen-time rules; explicit carousels and requested scene identity remain.
-Actual board prompt prefers one still with ordinary background in text; product/person references give five base operations plus one optional edit.
-Whole-path preflight counts exact reusable plans/anchors/sheets/keyframes and shows lifetime remaining capacity before paid dispatch.
-A smaller one-image plan is an explicit review choice, not an automatic rewrite; existing paid references remain.
-Historical same-thread canon can be explicitly rebound after a reset/renamed board/restart, validating owned assets and product pack before fresh approval.
-Successful canon plan, anchor, sheet and keyframes have input-bound durable checkpoints; changed inputs invalidate reuse.
-Sharper versions retain earlier library rows and board binding until success; rights/duplicate/kind validation runs before rendering.
-Still keyframes use the delivery ratio; owned image bytes must match before approval/reuse/QC/delivery, with invalid paid checkpoints retained.
-Multi-placement and fallback operations count before dispatch; SVG mock4:5 dimensions are accurate.
-Current saved-reference/smaller-plan choices take precedence over generic failed-job Retry; real failed-job browser review/reload passes.
-Safe failure titles/reasons and support IDs are visible; allowlisted diagnostic metadata persists without provider prose, even if storage logging fails.
-Installed-pg hostile URL tests retain verified CA; Python disables GSS bypass and remains verify-full with local preview contracts passing.
+## Conversational repair
+Current questions guide natural yes/go-ahead replies; approval plus a correction applies the correction first.
+Questions at all twelve stages retain current actions without buying model or media work; ambiguous/no-op interpretation retains work unchanged.
+Late facts/photos are interpreted against the full saved context using a bounded structured conversation prompt; unrelated facts and old paid files remain.
+Explicit claim edits become unconfirmed candidates and ask again; a model cannot approve them.
+Creative feedback updates the authoritative ShotBoard and its detail projection together, invalidating derived approvals only after valid replacement.
+Informal rendered feedback asks which image; its original words and additional selection instruction survive a restart before one chosen reroll.
+Corrections after QC/delivery return to fresh creative review; prior AdCards and assets remain history.
+A blocked reroll retains its exact edit across restart; a neutral owned-photo reply fills only the missing input and offers explicit Retry this image, with no LLM or automatic media.
+Messages arriving during active work are saved with an explicit not-applied notice, rather than silently changing running inputs.
+Campaign-list loading is visible; root confirmed GET200 with both campaigns, so the initial empty flash was not data loss.
 
-## Evidence
-`../docs/qa/2026-10-02/REPORT.md`, `fmea.json`, `fmea.csv`:115 scenarios/12 categories, not114 bugs, each with S/O/D/RPN/status/evidence.
-Final guarded suite333 passed/four local ffmpeg skips;16 Node client/TLS tests pass; production build receipt is in the same folder.
-Session-authored proxy outputs include actual system prompts and actual runner/driver results; no external model or image validation is implied.
-Full proxy person/product still: clarification→brand edit→canon→keyframe→one edit→QC→delivery, six fake media operations and two restarts.
-Initial failures, skipped conditions, code-only checks and unverified visual/load/provider cases are retained honestly.
+## Preserved recovery and safety
+Single stills avoid video-only screen-time rules; explicit carousels/location identities remain supported.
+Whole-path preflight discounts only matching saved plan/anchor/sheet/keyframes and reports remaining lifetime capacity before dispatch.
+Historical same-thread canon can be explicitly rebound after reset/renaming/restart, validating owner/product pack and requiring fresh approval.
+Partial paid results retain input-bound checkpoints; exact owned raster geometry gates approval/reuse/QC/delivery.
+Current saved-reference/smaller-plan choices supersede generic Retry while failed job history remains; safe categorized errors have support IDs.
+Auth.js/CSRF/signed BFF, forced-owner RLS/DML, private S3 version/hash checks and atomic reservations remain unchanged.
+No automatic paid retry/fallback after uncertain acceptance; media USD conversion remains unknown; prepared examples stay labelled/free.
 
-## Pending live decisions
-Current campaign can reuse three paid canon pairs and finish its two original images with two additional operations; cap8 would be needed for that owner, shared20 currently has two left.
-Alternative: explicitly approve one still and use one operation, optionally one edit; no hidden cap increase or usage reset is implemented.
-Six lifetime operations remain a trial limit, not a sustainable replenishing account allowance; operator grants/spend approval need a separate decision.
-Root review and deployment are complete. Proposed acceptance: one new PixelBin image after explicit one-image choice and approved per-account cap6→7, using the affected owner’s normal session. No admin impersonation path exists. Paid continuation is pending approval.
-
-## Preserved boundaries
-Auth.js sessions/CSRF, signed BFF, forced-owner RLS/DML-only DB role, private S3 version/hash/owner checks and atomic reservations remain.
-Media USD conversion stays unknown; no automatic provider replay/fallback after ambiguous acceptance; cached examples remain labelled and free.
-Previous Oct1 acceptance:21 text attempts/$0.06490920;10 media attempts,8 success/8 credits+2 retained rejections; allowance restored6.
-Previous export passed27 HTTP checks and later CUA downloadMedia; earlier waitForEvent timeout and shoes/bracelet edit limitation remain in Learning.
-No paid video/audio full-flow or automated semantic visual-quality claim; owned image geometry is checked. Loop.MD remains offered; standing paid-consent rules are unchanged.
+## Evidence and next actions
+`../docs/qa/2026-10-02/photo-recovery-validation.json` pins the latest runtime delta (earlier conversation proof retained):387 guarded Python passes, four existing local ffmpeg skips, web typecheck passed.
+54 conversational/recovery cases exercise actual driver/store/runner with session-authored actual-system-prompt responses and synthetic media, not provider validation.
+`proxy/conversation/` records prompt/response/validated results; malformed interpretation, late uploads, no-op, all-stage facts/questions and reload are covered.
+`fmea.json`/`fmea.csv`:127 distinct scenarios/12 categories;33 fixed,82 passing,7 checked,4 unverified,1 mitigated — not127 bugs.
+Live proof: exactly1 PixelBin request/0 text requests,1 returned credit/USD unknown;27 authenticated HTTP checks verify PNG/ZIP bytes, private headers and foreign404.
+The affected user's separate exhausted account still needs its normal session and an authorized capacity decision; no ownership bypass exists.
+Six lifetime media operations remain a trial limit; durable individual replenishment is not implemented and no daily reset is implied.
+Paid PNG896×1152 meets existing3.5% aspect tolerance (not exact4:5); no crop, new video/audio QA or general semantic image-quality claim.
+Loop.MD remains offered; standing consent rules remain, the one new authorized paid check has been consumed; no further provider request is implied.

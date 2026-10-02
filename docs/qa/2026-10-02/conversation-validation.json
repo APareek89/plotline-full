@@ -1,0 +1,80 @@
+{
+  "base_commit": "7079464",
+  "scope": "Conversational routing and stage-current adaptation; all tests provider-denied",
+  "status": "runtime_frozen_pending_root_release",
+  "backend": {
+    "passed": 378,
+    "skipped": 4,
+    "skip_reason": "existing local ffmpeg absence",
+    "failures": 0,
+    "junit": "conversation-pytest.xml"
+  },
+  "new_conversation_tests": 45,
+  "web_typecheck": "passed",
+  "provider_requests": 0,
+  "production_mutations": 0,
+  "proxy_provenance": "Session-authored structured text outputs use actual composed system prompts, runner schema/semantic checks, driver and owner stores; media fixtures are synthetic and are not provider validation.",
+  "source": [
+    {
+      "path": "api/app/campaign.py",
+      "sha256": "1ebf7ddf46b39313eac5a2ff4128df2f215d05e8b8cdc44da4b576ba380df118"
+    },
+    {
+      "path": "api/app/schemas.py",
+      "sha256": "b098b6bbdd3cd9592f9b099f28e3c6b8ec6e8ecbc7306a4d178d85bebfcee2aa"
+    },
+    {
+      "path": "api/app/agents/campaign_mock.py",
+      "sha256": "49b49bd4ba28f2e4504c196e5f413caf48537203c3035b634629f4e945f00d98"
+    },
+    {
+      "path": "api/prompts/campaign_conversation.md",
+      "sha256": "54ba7bdf56ff76e5bd3bfc29270bfc6a4ab1709e559a151f45df7a7962a0054d"
+    },
+    {
+      "path": "api/prompts/shot_board.md",
+      "sha256": "c18ddd0eba59ae2fb3c24ee507353a843a84890434e856cd2a3e2ed74176ab31"
+    },
+    {
+      "path": "api/prompts/hook_rack.md",
+      "sha256": "62b5ede60d2558935147e5070df55fda2669f14aad9b232c0bf3eb56b7e5962e"
+    },
+    {
+      "path": "api/tests/test_conversation_flow.py",
+      "sha256": "6fda712274ef584e3b369c91794e16ff58d501b510c18f8f6398e4e7f8fc412b"
+    },
+    {
+      "path": "web/app/campaigns/page.tsx",
+      "sha256": "6eb35427e8c09dd8cf3af740d7fce480fbf313f2b2cad4aa72ce45d680ae7651"
+    }
+  ],
+  "walkthroughs": [
+    "Question-only at every stage: no model/media and no saved-state change",
+    "Late facts across11 later stages: full context merge, new brief, saved paid files retained",
+    "Compound approval+change: correction before approval at all11 later stages",
+    "Keyframe composition correction updates authoritative board and detail, clears dependent approvals, survives restart",
+    "Delivered multi-image feedback retains original and additional selection instruction; one selected synthetic image rerender, other assets and prior AdCards unchanged",
+    "Explicit changed claim becomes unconfirmed candidate and asks again; no inferred claim approval",
+    "Invalid interpretation and busy-message cases retain durable prior work"
+  ],
+  "independent_review": {
+    "reviewer": "rescue_audit",
+    "status": "no_blocker_in_requested_paths",
+    "scope": "Read-only current diff and actual-driver cases; question/approval/correction ordering, exact-asset edit binding, source/projection reset and preserved failure state; not live model validation"
+  },
+  "proxy_secret_scan": {
+    "tool": "gitleaks dir --redact",
+    "findings": 0,
+    "bytes_scanned": 179692
+  },
+  "diagram": "conversation-diagram.json",
+  "fmea": {
+    "scenarios": 126,
+    "categories": 12,
+    "fixed": 32,
+    "passing": 82,
+    "checked": 7,
+    "unverified": 4,
+    "mitigated": 1
+  }
+}
