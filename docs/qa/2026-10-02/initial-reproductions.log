@@ -1,0 +1,170 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_______ test_single_still_with_person_does_not_require_video_screen_time _______
+
+    def test_single_still_with_person_does_not_require_video_screen_time():
+        board=ShotBoard.model_validate(_board(shots=[_shot(cast_refs=['@person'], product_refs=['@product'])]))
+>       assert len(validate_shot_board(board).shots)==1
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_fmea_flow.py:16:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+board = ShotBoard(creative_type='image', shots=[BoardShot(slot='shot_01', duration_s=3.0, beat='she lifts the bottle to the li...solution=[]), motion=LintResult(status='pass', findings=[], resolution=[])), est_total_usd=0.08, version=1, changes=[])
+
+    def validate_shot_board(board: "ShotBoard", *, avg_beat_s: float = 3.0) -> "ShotBoard":
+        """B1-B4. Lints that can fix a row fix it AND RECORD the fix in `changes[]`;
+        lints that need a human decision fail the gate.
+
+        Nothing here silently truncates. A silently dropped product reference is
+        exactly how label and geometry drift enter a campaign, so B3 forces a choice.
+        """
+        from app import config as _config
+
+        errors: list[str] = []
+        beats, runtime, slots, motion = LintResult(), LintResult(), LintResult(), LintResult()
+
+        # ---- B1: one clear beat per clip. Auto-splittable, so it is applied.
+        split_count = 0
+        for shot in list(board.shots):
+            low = f" {shot.beat.lower()} "
+            hit = next((c for c in _SEQUENTIAL_CUES if c in low), None)
+            if hit:
+                beats.findings.append(
+                    f"{shot.slot}: the beat carries two actions ({hit.strip()!r}) — one clip, one beat")
+                beats.resolution.append(f"{shot.slot} split into {shot.slot}_a / {shot.slot}_b")
+                board.changes.append(f"B1 auto-split {shot.slot} on {hit.strip()!r}")
+                split_count += 1
+        beats.status = "warn" if split_count else "pass"
+
+        # ---- B2: runtime budget. Cast size is an OUTPUT of duration, not an input.
+        cast = {c for shot in board.shots for c in shot.cast_refs}
+        if cast and len(cast) * 2 > len(board.shots):
+            runtime.status = "fail"
+            runtime.findings.append(
+                f"{len(cast)} distinct characters across {len(board.shots)} shots — no one gets enough "
+                "screen time to register. Runtime decides how many shots exist, which decides how many "
+                "characters the film can carry")
+            runtime.resolution.append(
+                f"cut to at most {max(1, len(board.shots) // 2)} character(s), or lengthen the spot")
+            errors.append(runtime.findings[-1])
+
+        total = sum(s.duration_s for s in board.shots)
+        expected = max(1, round(total / avg_beat_s)) if avg_beat_s else len(board.shots)
+        if len(board.shots) > expected * 2:
+            runtime.findings.append(
+                f"{len(board.shots)} shots for {total:g}s reads as a cut-heavy edit; "
+                f"roughly {expected} beats fit that runtime")
+            runtime.status = runtime.status if runtime.status == "fail" else "warn"
+
+        # ---- B3: reference-slot budget. NEVER silently truncate.
+        for shot in board.shots:
+            cap = _ref_slots_for(shot.model_route)
+            shot.slots_used = len(shot.all_refs)
+            if shot.slots_used > cap:
+                slots.status = "fail"
+                slots.findings.append(
+                    f"{shot.slot}: {shot.slots_used} references but {shot.model_route} carries {cap}. "
+                    f"Refs: {shot.all_refs}")
+                slots.resolution.append(
+                    f"{shot.slot}: drop a reference or split the shot — say WHICH; a silently dropped "
+                    "product reference is how label and geometry drift enter a campaign")
+                errors.append(slots.findings[-1] + " — " + slots.resolution[-1])
+
+        # ---- B4: motion complexity.
+        for shot in board.shots:
+            text = f" {(shot.motion_prompt or '').lower()} "
+            if any(c in text for c in _COMPOUND_MOTION) and shot.camera != "static":
+                motion.status = "warn"
+                motion.findings.append(
+                    f"{shot.slot}: the camera path has more than one stage — one short clip holds one move")
+                motion.resolution.append(f"{shot.slot}: keep the first move, or split the shot")
+
+        # ---- routing and cost come from CONFIG, never from the model
+        for shot in board.shots:
+            if shot.model_route not in _config.MEDIA_MODELS:
+                errors.append(
+                    f"{shot.slot}: model_route {shot.model_route!r} is not in config.MEDIA_MODELS "
+                    f"{sorted(_config.MEDIA_MODELS)} — a model id is never the model's to invent")
+            if not (shot.route_reason or "").strip():
+                errors.append(
+                    f"{shot.slot}: route_reason is empty. Route on the shot's HARDEST requirement and "
+                    "say what it was — this is a large part of why an agency will trust the tool")
+
+        board.est_total_usd = round(sum(s.est_cost_usd for s in board.shots), 4)
+        board.lints = BoardLints(beats=beats, runtime=runtime, slots=slots, motion=motion)
+
+        if errors:
+>           raise AgentValidationError(errors)
+E           app.validators.AgentValidationError: 1 distinct characters across 1 shots — no one gets enough screen time to register. Runtime decides how many shots exist, which decides how many characters the film can carry
+
+app/validators.py:839: AgentValidationError
+________ test_partial_canon_retry_reuses_completed_anchor_after_restart ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c197e60>
+
+    def test_partial_canon_retry_reuses_completed_anchor_after_restart(monkeypatch):
+        cid,tid=_ruminated('Partial canon proxy')
+        sheet=CanonSheet(id='@product',kind='product',label='Product',brief='Navy tee',rights='owned')
+        calls=[]
+        def generate(kind,prompt,**kwargs):
+            calls.append(prompt)
+            if len(calls)==2:raise media.MediaError('fixture sheet transport failed')
+            dest=config.ASSET_DIR/f'partial_{len(calls)}.svg';media._mock_image(prompt,'1:1',dest)
+            return {'path':str(dest),'kind':'image','model':'fixture','provider':'fixture','cost':0,'refs_used':kwargs.get('image_urls',[])}
+        monkeypatch.setattr(campaign,'generate',generate)
+        with pytest.raises(media.MediaError):campaign._render_canon_views(tid,[sheet],cid)
+        saved_assets=store.list_assets(thread_id=tid)
+        assert len(saved_assets)==1
+        anchor_id=saved_assets[0]['id']
+        campaign._WORKSPACES.clear()
+        result=campaign._render_canon_views(tid,[sheet],cid)[0]
+>       assert len(calls)==3, 'Explicit Retry must not re-render the paid anchor'
+E       AssertionError: Explicit Retry must not re-render the paid anchor
+E       assert 4 == 3
+E        +  where 4 = len(['a straight-on three-quarter front view of Navy tee. Plain, evenly lit, neutral background, subject centred and fully... No logo, wordmark or copy that is not already on the subject. No duplicate panels, no extra panels, no empty panels.'])
+
+tests/test_fmea_flow.py:36: AssertionError
+__________ test_canon_unverified_person_is_refused_before_any_render ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c1bbda0>
+
+    def test_canon_unverified_person_is_refused_before_any_render(monkeypatch):
+        cid,tid=_ruminated('Consent gate proxy')
+        sheet=CanonSheet(id='@real_person',kind='character',label='Person',brief='Real identifiable person',rights='unverified')
+        calls=[]
+        def generate(kind,prompt,**kwargs):
+            calls.append(prompt)
+            dest=config.ASSET_DIR/f'consent_{len(calls)}.svg';media._mock_image(prompt,'1:1',dest)
+            return {'path':str(dest),'kind':'image','model':'fixture','provider':'fixture','cost':0}
+        monkeypatch.setattr(campaign,'generate',generate)
+        with pytest.raises(Exception,match='rights|consent|unverified'):campaign._render_canon_views(tid,[sheet],cid)
+>       assert not calls, 'Rights failure must be caught before paying for two images'
+E       AssertionError: Rights failure must be caught before paying for two images
+E       assert not ['a straight-on full-figure front view of Real identifiable person. Plain, evenly lit, neutral background, subject cen... No logo, wordmark or copy that is not already on the subject. No duplicate panels, no extra panels, no empty panels.']
+
+tests/test_fmea_flow.py:50: AssertionError
+=============================== warnings summary ===============================
+app/main.py:34
+  /Users/macbook/Documents/Codex/portfolio/plotline-full/api/app/main.py:34: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("startup")
+
+.venv/lib/python3.12/site-packages/fastapi/applications.py:4744
+  /Users/macbook/Documents/Codex/portfolio/plotline-full/api/.venv/lib/python3.12/site-packages/fastapi/applications.py:4744: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_fmea_flow.py::test_single_still_with_person_does_not_require_video_screen_time
+FAILED tests/test_fmea_flow.py::test_partial_canon_retry_reuses_completed_anchor_after_restart
+FAILED tests/test_fmea_flow.py::test_canon_unverified_person_is_refused_before_any_render

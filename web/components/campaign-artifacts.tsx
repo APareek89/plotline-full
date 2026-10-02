@@ -704,6 +704,8 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
     (ch) => offered(ch) && variants.length >= variantCount(ch)
   );
 
+  const generationOffered = options.length > 0 || (artifact.actions ?? []).some((a) => a.event === "generate_draft");
+
   const costFor = (ch: GenChoice): number =>
     ch === "single"
       ? Number(c.cost_usd ?? 0)
@@ -720,7 +722,7 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
     <div className={`${CARD} border-l-[3px] border-l-[var(--ms-blue,#4353FF)]`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className={LABEL}>Confirm before generating</p>
+          <p className={LABEL}>{generationOffered ? "Confirm before generating" : "Saved render settings"}</p>
           <h3 className="mt-0.5 text-[14px] font-bold">{sample ? "Prepared sample renderer" : c.recommended_model ?? artifact.title}</h3>
         </div>
         {/* rendered, honestly inert. A native `disabled` would kill the pointer
@@ -744,10 +746,10 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
         {note}
       </p>
 
-      <p className={LABEL + " mt-3"}>One creative, or variants?</p>
+      {options.length > 0 && <p className={LABEL + " mt-3"}>One creative, or variants?</p>}
       {options.length === 0 ? (
         <p className={`mt-1.5 text-[12.5px] ${MUTED}`}>
-          No generate options attached to this card yet — nothing can be generated from here.
+          These settings are retained for reference; use the current conversation action to continue.
         </p>
       ) : (
         <div className="mt-1.5 space-y-1.5" role="radiogroup" aria-label="Single or variants">
@@ -822,7 +824,7 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      {options.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
           className={BTN_PRIMARY}
@@ -841,7 +843,7 @@ function ModelConfirmCard({ artifact, onAction, busy }: CampaignArtifactProps) {
             Pick single or variants before confirming generation.
           </span>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1499,7 +1501,7 @@ function KeyframeBoardCard({ artifact, onAction, busy }: CampaignArtifactProps) 
         </MsChip>
       </div>
       <p className={`mt-0.5 text-[11px] ${MUTED}`}>
-        No video is generated until every frame is approved. Review the stills before approving motion.
+        Review and approve every keyframe before continuing.
       </p>
 
       <div className="mt-2.5 grid gap-2 sm:grid-cols-3">

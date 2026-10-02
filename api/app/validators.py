@@ -710,9 +710,9 @@ def validate_canon_sheet(sheet: "CanonSheet", *, languages: Optional[list[str]] 
             "a product whose geometry mutates needs them before it can be trusted in a shot")
 
     # A real likeness with no consent record is a kill flag at review, not a note.
-    if sheet.kind == "character" and sheet.rights == "unverified" and sheet.asset_ids:
+    if sheet.kind == "character" and sheet.rights == "unverified":
         errors.append(
-            f"{sheet.id}: a character sheet with uploaded assets and rights='unverified' cannot be "
+            f"{sheet.id}: a character sheet with rights='unverified' cannot be "
             "used. Record consent, or mark it 'fictional' if no real person is depicted")
 
     if errors:
@@ -765,22 +765,22 @@ def validate_shot_board(board: "ShotBoard", *, avg_beat_s: float = 3.0) -> "Shot
     errors: list[str] = []
     beats, runtime, slots, motion = LintResult(), LintResult(), LintResult(), LintResult()
 
-    # ---- B1: one clear beat per clip. Auto-splittable, so it is applied.
+    # ---- B1: one clear beat per clip. Report a required edit honestly; do not claim a split without changing rows.
     split_count = 0
-    for shot in list(board.shots):
+    for shot in (list(board.shots) if board.creative_type == "video" else []):
         low = f" {shot.beat.lower()} "
         hit = next((c for c in _SEQUENTIAL_CUES if c in low), None)
         if hit:
             beats.findings.append(
                 f"{shot.slot}: the beat carries two actions ({hit.strip()!r}) — one clip, one beat")
-            beats.resolution.append(f"{shot.slot} split into {shot.slot}_a / {shot.slot}_b")
-            board.changes.append(f"B1 auto-split {shot.slot} on {hit.strip()!r}")
+            beats.resolution.append(f"Split {shot.slot} into two approved shots, or simplify it to one action")
+            board.changes.append(f"B1 edit needed: {shot.slot} contains {hit.strip()!r}; shot count is unchanged")
             split_count += 1
     beats.status = "warn" if split_count else "pass"
 
     # ---- B2: runtime budget. Cast size is an OUTPUT of duration, not an input.
     cast = {c for shot in board.shots for c in shot.cast_refs}
-    if cast and len(cast) * 2 > len(board.shots):
+    if board.creative_type == "video" and cast and len(cast) * 2 > len(board.shots):
         runtime.status = "fail"
         runtime.findings.append(
             f"{len(cast)} distinct characters across {len(board.shots)} shots — no one gets enough "
@@ -792,7 +792,7 @@ def validate_shot_board(board: "ShotBoard", *, avg_beat_s: float = 3.0) -> "Shot
 
     total = sum(s.duration_s for s in board.shots)
     expected = max(1, round(total / avg_beat_s)) if avg_beat_s else len(board.shots)
-    if len(board.shots) > expected * 2:
+    if board.creative_type == "video" and len(board.shots) > expected * 2:
         runtime.findings.append(
             f"{len(board.shots)} shots for {total:g}s reads as a cut-heavy edit; "
             f"roughly {expected} beats fit that runtime")
@@ -815,7 +815,7 @@ def validate_shot_board(board: "ShotBoard", *, avg_beat_s: float = 3.0) -> "Shot
     # ---- B4: motion complexity.
     for shot in board.shots:
         text = f" {(shot.motion_prompt or '').lower()} "
-        if any(c in text for c in _COMPOUND_MOTION) and shot.camera != "static":
+        if board.creative_type == "video" and any(c in text for c in _COMPOUND_MOTION) and shot.camera != "static":
             motion.status = "warn"
             motion.findings.append(
                 f"{shot.slot}: the camera path has more than one stage — one short clip holds one move")

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app import brand_extract, campaign, config, store, threadkit
 from app import auth as portfolio_auth, database
-from app import examples
+from app import examples, usage
 from app.execution import fixture_mode, owner_directory, require_execution
 from app import seats as seats_mod
 from app.agents.runner import AgentHardFail
@@ -135,12 +135,13 @@ def prepare_example(body: ExampleBody):
 def owner_usage():
     actor = require_execution()
     if fixture_mode():
-        return {"rows": [], "media_allowance": 6, "owner_text_usd_limit": "1.00"}
+        return {"rows": [], "media_allowance": usage.owner_media_limit(), "owner_text_usd_limit": "1.00"}
     with database.connection(owner_id=actor.owner_id) as conn:
         rows = conn.execute("""SELECT id,kind,provider,model,status,reserved_usd,actual_usd,consumed_credits,
           input_tokens,output_tokens,cached_input_tokens,reasoning_output_tokens,created_at
           FROM usage WHERE owner_id=%s ORDER BY created_at DESC LIMIT 100""", (actor.owner_id,)).fetchall()
-    return {"rows": rows, "media_allowance": 6, "owner_text_usd_limit": os.getenv("PLOTLINE_OWNER_BUDGET_USD", "1.00"),
+    return {"rows": rows, "media_allowance": usage.owner_media_limit(), "owner_text_usd_limit": os.getenv("PLOTLINE_OWNER_BUDGET_USD", "1.00"),
+            "media_capacity": usage.media_capacity(),
             "media_usd_note": "Media operation counts are bounded; a dollar conversion is not verified."}
 
 

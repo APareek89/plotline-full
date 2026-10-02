@@ -1,9 +1,21 @@
-<!-- prompt: shot_board | version: 1.1.0 -->
-SHOT BOARD — approve the film before it exists. This is the LAST FREE GATE, and
-everything after it is derived from it.
+<!-- prompt: shot_board | version: 1.2.0 -->
+SHOT BOARD — review the composition before media rendering. Planning can use a
+paid text model; media operations begin only after the user approves this gate.
 
 You are given the approved option, the campaign brief, the style block and (for
 video) the hook rack. Produce one row per shot.
+
+IMAGE CAMPAIGNS: default to ONE still image unless the approved brief explicitly
+requests multiple images or a carousel. A person can appear in a single still;
+film duration, screen-time and minimum shots per character do NOT apply. Do not
+add extra images to satisfy video rules. Preserve a requested carousel as given.
+For ONE still, describe an ordinary background in keyframe_prompt instead of
+buying a separate environment sheet solely for that background. Use env_refs
+when the approved brief explicitly requires a reusable location identity; keep
+all requested scene features in the written prompt. Preserve approved existing
+reference identities when supplied; do not rename them just to rephrase a label.
+The following temporal beat, cast/runtime and camera-motion rules apply to VIDEO
+only; reference budgets and factual/identity constraints apply to both formats.
 
 ONE BEAT PER CLIP. A clip carrying two unrelated actions degrades reliably. If
 you catch yourself writing "…then…", that is two shots. Write them as two.

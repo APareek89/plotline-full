@@ -14,9 +14,9 @@ def parameters() -> dict:
     parsed = urlsplit(address)
     if parsed.scheme not in ("postgres", "postgresql"):
         raise RuntimeError("Invalid database scheme")
-    query = {k: v for k, v in parse_qsl(parsed.query) if not k.lower().startswith("ssl")}
+    query = {k: v for k, v in parse_qsl(parsed.query) if not k.lower().startswith("ssl") and k.lower() not in ("requiressl", "gssencmode", "uselibpqcompat")}
     address = urlunsplit(parsed._replace(query=urlencode(query)))
-    params = {"conninfo": address, "connect_timeout": 10, "row_factory": dict_row,
+    params = {"conninfo": address, "connect_timeout": 10, "row_factory": dict_row, "gssencmode": "disable",
               "options": "-c statement_timeout=15000 -c lock_timeout=10000 -c idle_in_transaction_session_timeout=15000"}
     if os.environ.get("DATABASE_SSL") == "disable":
         if parsed.hostname not in ("127.0.0.1", "localhost", "::1") or os.environ.get("NODE_ENV") == "production":

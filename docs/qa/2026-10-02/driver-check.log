@@ -1,0 +1,86 @@
+....F................................................................... [ 37%]
+........................................................................ [ 74%]
+...ss.s..........s...............F................                       [100%]
+=================================== FAILURES ===================================
+____________ test_unmapped_claim_never_reaches_the_campaign_detail _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b26bf80>
+
+    def test_unmapped_claim_never_reaches_the_campaign_detail(monkeypatch):
+        """The same rule as code, one layer down: claims_used ⊆ confirmed claims is
+        a hard validation on the detail, not a prompt instruction."""
+        cid, tid = _ruminated("Claim gate")
+        context = campaign._context_of(cid)
+        detail_of = campaign_mock.mock_campaign_detail
+
+        with pytest.raises(AgentValidationError) as exc:
+            campaign._validate_detail(
+                CampaignDetail.model_validate({
+                    **detail_of({"context": context.model_dump(mode="json")}, None),
+                    "claims_used": ["3x faster than QuickBooks"],
+                }),
+                context, None)
+        assert "3x faster than QuickBooks" in str(exc.value) and "kill flag" in str(exc.value)
+
+        # …and through the live path. v3 upgraded the detail into the SHOT BOARD, so
+        # the claim now has to be refused there — same rule, same helper, new artifact.
+        board_of = campaign_mock.mock_shot_board
+
+        def unmapped_board(payload, dispatcher):
+            return {**board_of(payload, dispatcher), "claims_used": ["3x faster than QuickBooks"]}
+
+        monkeypatch.setattr(campaign_mock, "mock_shot_board", unmapped_board)
+        _act(tid, "o1", "approve")
+        _pass_script(tid)
+        assert _artifacts(tid, "campaign_detail") == []     # no board, no generation path
+>       assert _artifacts(tid, "escalation")[-1]["title"].startswith("The shot board kept failing")
+E       AssertionError: assert False
+E        +  where False = <built-in method startswith of str object at 0x109d45b30>('The shot board kept failing')
+E        +    where <built-in method startswith of str object at 0x109d45b30> = 'Step interrupted'.startswith
+
+tests/test_marketing.py:407: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    plotline.campaign:campaign.py:3474 campaign thread thr_bfc86781e4: The shot board kept failing its lints.
+shot_board: output invalid after 2 retries — claims_used ['3x faster than QuickBooks'] are NOT in the confirmed approved_claims — an unmapped claim is a kill flag, not a stretch
+__________ test_failure_exposes_only_current_explicit_retry_question ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bf972f0>
+
+    def test_failure_exposes_only_current_explicit_retry_question(monkeypatch):
+        cid, tid = _filled('Actionable failure')
+        from app import execution
+        actor = execution.require_execution()
+        monkeypatch.setattr(execution, 'fixture_mode', lambda: False)
+        # Keep fixture persistence here; only exercise production error redaction.
+        with execution.execution_scope(actor):
+            campaign._fail(tid, 'internal provider detail', 'private traceback detail')
+        last = _envelopes(tid)[-1]
+>       assert last['question'] and 'Retry this step' in last['question']['text']
+E       AssertionError: assert ({'free_text': True, 'multi': False, 'note': 'Retry is explicit and may submit a new paid request; it never starts automatically.', 'options': [{'artifact_id': 'error', 'event': 'retry', 'label': 'Retry', 'primary': True}], ...} and 'Retry this step' in 'Review the saved work and usage first, then retry the unfinished step?')
+
+tests/test_marketing.py:4732: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    plotline.campaign:campaign.py:3470 campaign stage failed on thread thr_be599fc2f2
+=============================== warnings summary ===============================
+app/main.py:34
+  /Users/macbook/Documents/Codex/portfolio/plotline-full/api/app/main.py:34: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("startup")
+
+.venv/lib/python3.12/site-packages/fastapi/applications.py:4744
+  /Users/macbook/Documents/Codex/portfolio/plotline-full/api/.venv/lib/python3.12/site-packages/fastapi/applications.py:4744: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_marketing.py::test_unmapped_claim_never_reaches_the_campaign_detail
+FAILED tests/test_marketing.py::test_failure_exposes_only_current_explicit_retry_question

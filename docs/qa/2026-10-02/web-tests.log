@@ -1,0 +1,40 @@
+(node:74030) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/macbook/Documents/Codex/portfolio/plotline-full/web/lib/client/campaign-flow.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/macbook/Documents/Codex/portfolio/plotline-full/web/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a photo and one line start without a campaign name, brand, audience or channel form (0.42425ms)
+✔ a newer status or failed turn never resurrects an old Start or approval question (0.11075ms)
+✔ saved cards offer only exact artifact/event pairs in the current server question (0.321209ms)
+✔ the current legacy escalation exposes only its explicitly offered Retry (0.103833ms)
+✔ cards without an explicit escalation retry cannot manufacture a recovery button (0.054375ms)
+(node:74031) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/macbook/Documents/Codex/portfolio/plotline-full/web/lib/client/session.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/macbook/Documents/Codex/portfolio/plotline-full/web/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a response body from A cannot update B after an account change (10.495ms)
+✔ late A401 does not sign out B, including a delayed error body (0.121875ms)
+✔ current401 expires session and aborts another pending read (1.484084ms)
+✔ blob download body and queued upload loop retain the original account generation (0.26825ms)
+✔ multipart uses same-origin cookies and session CSRF without overriding browser boundary (0.636042ms)
+✔ owner draft cleanup cannot adopt or remove legacy and other-account drafts (0.344416ms)
+✔ Auth.js return-redirect contract rejects wrong password even on HTTP200 (0.3725ms)
+✔ a session refresh body arriving after B login cannot restore A (0.100209ms)
+✔ cross-tab account notice hides A and fences its response before the session refresh completes (0.149416ms)
+(node:74032) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/macbook/Documents/Codex/portfolio/plotline-full/web/server/db.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/macbook/Documents/Codex/portfolio/plotline-full/web/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ installed pg keeps explicit verified CA across URL TLS overrides; no connection (9.1875ms)
+(node:74033) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/macbook/Documents/Codex/portfolio/plotline-full/web/lib/client/media-pricing.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/macbook/Documents/Codex/portfolio/plotline-full/web/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ only recorded sample provenance claims zero provider cost; ordinary unknowns stay unverified (0.425583ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 82.852916

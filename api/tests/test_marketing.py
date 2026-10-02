@@ -404,7 +404,8 @@ def test_unmapped_claim_never_reaches_the_campaign_detail(monkeypatch):
     _act(tid, "o1", "approve")
     _pass_script(tid)
     assert _artifacts(tid, "campaign_detail") == []     # no board, no generation path
-    assert _artifacts(tid, "escalation")[-1]["title"].startswith("The shot board kept failing")
+    assert _artifacts(tid, "escalation")[-1]["title"] == "Output needs correction"
+    assert "The shot board kept failing" in _artifacts(tid, "escalation")[-1]["payload"]["reason"]
     assert store.list_assets(tid) == []
 
 
@@ -2107,18 +2108,17 @@ def _board(**over) -> dict:
     return base
 
 
-def test_b1_splits_a_two_action_beat_and_records_the_split():
-    """A clip carrying two unrelated actions degrades reliably. This one is
-    auto-fixable, so it is fixed AND recorded — the board logs its own edits
-    instead of quietly applying them."""
+def test_b1_reports_two_action_beat_without_claiming_an_unperformed_split():
+    """A warning may recommend a split, but cannot claim a nonexistent edit."""
     from app.schemas import ShotBoard
     from app.validators import validate_shot_board
 
-    board = validate_shot_board(ShotBoard.model_validate(_board(shots=[
+    board = validate_shot_board(ShotBoard.model_validate(_board(creative_type="video", shots=[
         _shot(beat="macro insert on the seam then back to her face")])))
     assert board.lints.beats.status == "warn"
-    assert board.lints.beats.resolution and "split" in board.lints.beats.resolution[0]
-    assert any("B1 auto-split" in c for c in board.changes)
+    assert board.lints.beats.resolution and "Split" in board.lints.beats.resolution[0]
+    assert any("B1 edit needed" in c for c in board.changes)
+    assert len(board.shots) == 1 and not any("auto-split" in c for c in board.changes)
 
 
 def test_b2_flags_a_cast_the_runtime_cannot_carry():
@@ -2128,7 +2128,7 @@ def test_b2_flags_a_cast_the_runtime_cannot_carry():
     from app.validators import validate_shot_board
 
     with pytest.raises(AgentValidationError) as exc:
-        validate_shot_board(ShotBoard.model_validate(_board(shots=[
+        validate_shot_board(ShotBoard.model_validate(_board(creative_type="video", shots=[
             _shot(slot="shot_01", cast_refs=["@priya"]),
             _shot(slot="shot_02", cast_refs=["@arjun", "@meera", "@sam"])])))
     assert "screen time" in str(exc.value)
@@ -2166,7 +2166,7 @@ def test_b4_flags_a_multi_stage_camera_move():
     from app.schemas import ShotBoard
     from app.validators import validate_shot_board
 
-    board = validate_shot_board(ShotBoard.model_validate(_board(shots=[
+    board = validate_shot_board(ShotBoard.model_validate(_board(creative_type="video", shots=[
         _shot(motion_prompt="descend then orbit into a push")])))
     assert board.lints.motion.status == "warn"
     assert "one short clip holds one move" in board.lints.motion.findings[0]
@@ -4729,7 +4729,7 @@ def test_failure_exposes_only_current_explicit_retry_question(monkeypatch):
     with execution.execution_scope(actor):
         campaign._fail(tid, 'internal provider detail', 'private traceback detail')
     last = _envelopes(tid)[-1]
-    assert last['question'] and 'Retry this step' in last['question']['text']
+    assert last['question'] and 'retry the unfinished step' in last['question']['text']
     assert [item['event'] for item in last['question']['options']] == ['retry']
     assert last['question']['options'][0]['artifact_id'] == last['artifacts'][0]['id']
     assert 'paid request' in last['question']['note']

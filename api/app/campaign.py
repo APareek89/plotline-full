@@ -26,6 +26,7 @@ import io
 import json
 import logging
 import re
+import sys
 import threading
 import time
 import traceback
@@ -33,7 +34,7 @@ from typing import Any, Callable, Optional
 from contextvars import ContextVar
 
 from app import ccs as ccs_mod
-from app import config, store
+from app import config, store, usage
 from app.agents import campaign_mock
 from app.agents.council import SEATS, run_council, run_seat
 from pydantic import ValidationError
@@ -627,9 +628,19 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
             _spawn(thread_id, _script_turn, thread_id, campaign_id)
             return
 
+    if stage in ("detail", "canon", "keyframes") and event == "reuse_saved_canon":
+        _reuse_saved_canon(thread_id, campaign_id)
+        return
+
+    if stage in ("detail", "canon", "keyframes") and event == "compact_image_plan":
+        _compact_image_plan(thread_id, campaign_id)
+        return
+
     if stage == "detail" and event in ("approve_board", "regenerate_board"):
         if event == "regenerate_board":
             _spawn(thread_id, _board_turn, thread_id, campaign_id)
+            return
+        if not _capacity_gate(thread_id, campaign_id, ws.get("board") or {}):
             return
         store.log_artifact_activity(thread_id, "board", "approved", "")
         store.set_thread_stage(thread_id, advance_from(campaign_id, "detail"))
@@ -657,6 +668,13 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
 
     if stage == "keyframes":
         if event == "approve_keyframes":
+            try:
+                ratio = _keyframe_ratio(_context_of(campaign_id), ws, ws.get("board") or {})
+                for frame in (ws.get("keyframes") or {}).get("frames", []):
+                    _verify_image_ratio(store.get_asset(frame.get("asset_id")), ratio)
+            except ImageRatioMismatch:
+                _fail(thread_id, "Image dimensions need review", "")
+                return
             ws["keyframes"] = _approve_all_keyframes(ws.get("keyframes") or {})
             store.log_artifact_activity(thread_id, "keyframes", "approved",
                                         f"{len(ws['keyframes'].get('frames', []))} frames")
@@ -664,6 +682,7 @@ def _dispatch(thread: dict[str, Any], stage: str, event: str, artifact_id: str, 
             _spawn(thread_id, _confirm_turn, thread_id, campaign_id)
             return
         if event == "regenerate_keyframes":
+            ws["regenerate_keyframes"] = True
             _spawn(thread_id, _keyframes_turn, thread_id, campaign_id)
             return
 
@@ -2462,6 +2481,7 @@ def _confirm_turn(thread_id: str, campaign_id: str) -> None:
                     "confirm": confirm.model_dump(mode="json"),
                     "ratios": ratios,
                     "cost_single": round(base, 2),
+                    "new_image_operations_single": _pending_image_outputs(ws, detail, ratios, [None]) if ctype == "image" else None,
                     **{f"cost_variants_{n}": round(n * base, 2) for n in range(2, len(specs) + 1)},
                     "credits_single": 0.0 if _sample_media() else None,
                     "billing_status": "sample" if _sample_media() else "usd_unverified",
@@ -2488,6 +2508,21 @@ def _ratios_for(creative_type: str, platforms: list[str]) -> list[str]:
     default = "9:16" if creative_type == "video" else "1:1"
     out = list(dict.fromkeys(table.get(p, default) for p in platforms))
     return out or [default]
+
+
+def _keyframe_ratio(context: CampaignContext, ws: dict, board: dict) -> str:
+    if board.get("creative_type") == "image":
+        return _ratios_for("image", list(context.campaign.platforms) if context.campaign else [])[0]
+    return (ws.get("brief") or {}).get("aspect_ratios", ["9:16"])[0]
+
+
+def _pending_image_outputs(ws: dict, detail: dict, ratios: list[str], specs: list) -> int:
+    """Count only unsaved output slots not satisfied by a matching approved frame."""
+    rendered = {i["slot"] for i in ws.get("items", [])}
+    return sum(
+        _slot_key(spec["variant_id"] if spec else None, shot["slot"], ratio) not in rendered
+        and not (spec is None and _approved_keyframe(ws, shot["slot"], ratio))
+        for spec in specs for shot in _apply_variant(detail, spec)["shots"] for ratio in ratios)
 
 
 def _estimate(detail: dict[str, Any], ratios: list[str]) -> float:
@@ -2606,6 +2641,9 @@ def _generate_turn(thread_id: str, campaign_id: str, variant_count: int, draft_o
         ratios = ws.get("ratios") or _ratios_for(detail["creative_type"], list(context.campaign.platforms))
         specs: list[Optional[dict[str, Any]]] = (
             list(ws["variant_specs"][:variant_count]) if variant_count > 1 else [None])
+        if detail["creative_type"] == "image":
+            needed = _pending_image_outputs(ws, detail, ratios, specs)
+            if not _capacity_gate(thread_id, campaign_id, ws.get("board") or detail, needed=needed): return
         ws["variant_count"] = max(variant_count, 1)
         if variant_count > 1 and not ws.get("variant_group_id"):
             ws["variant_group_id"] = store.new_id("vgrp")
@@ -2662,7 +2700,48 @@ def _generate_turn(thread_id: str, campaign_id: str, variant_count: int, draft_o
         _working.pop(thread_id, None)
 
 
-def _approved_keyframe(ws: dict[str, Any], shot_slot: str) -> Optional[dict[str, Any]]:
+class ImageRatioMismatch(MediaError):
+    """Retained paid bytes need review; never an instruction to resubmit."""
+    def __init__(self):
+        super().__init__("The saved image cannot be verified at the requested aspect ratio; its asset and usage are retained")
+
+
+def _verify_image_ratio(asset: dict | None, ratio: str) -> None:
+    """Check owned bytes, allowing at most 3.5% provider dimension quantization."""
+    try:
+        if not asset or asset.get("kind") != "image": raise ValueError()
+        path = store.file_path(asset, "assets")
+        if path.suffix.lower() == ".svg":
+            from app.execution import fixture_mode
+            if not (_sample_media() or fixture_mode()): raise ValueError()
+            # SVG is only our explicit sample transport; production images are raster.
+            import xml.etree.ElementTree as ET
+            if path.stat().st_size > 256000: raise ValueError()
+            node = ET.fromstring(path.read_bytes())
+            width, height = float(node.attrib["width"]), float(node.attrib["height"])
+        else:
+            from PIL import Image
+            with Image.open(path) as image:
+                width, height = image.size
+                if not 0 < width * height <= 40_000_000: raise ValueError()
+                image.verify()
+        rw, rh = map(int, ratio.split(":"))
+        if min(width, height, rw, rh) <= 0 or abs((width / height) / (rw / rh) - 1) > 0.035:
+            raise ValueError()
+    except Exception:
+        raise ImageRatioMismatch() from None
+
+
+def _verify_deliverable_images(ws: dict) -> bool:
+    checked = False
+    for item in ws.get("items", []):
+        if item.get("kind") == "image" and item.get("slot") in ws.get("accepted", set()):
+            _verify_image_ratio(store.get_asset(item.get("asset_id")), item.get("ratio", ""))
+            checked = True
+    return checked
+
+
+def _approved_keyframe(ws: dict[str, Any], shot_slot: str, ratio: str | None = None) -> Optional[dict[str, Any]]:
     """The still the user approved at the hard gate for this shot, if any.
 
     THE GATE HAS TO MEAN SOMETHING. `_render_slot` used to render a fresh still
@@ -2674,7 +2753,8 @@ def _approved_keyframe(ws: dict[str, Any], shot_slot: str) -> Optional[dict[str,
     for frame in ((ws.get("keyframes") or {}).get("frames") or []):
         if frame.get("shot_slot") == shot_slot and frame.get("approved"):
             asset = store.get_asset(frame.get("asset_id"))
-            if asset:
+            if asset and (ratio is None or (asset.get("params") or {}).get("ratio") == ratio):
+                if ratio is not None: _verify_image_ratio(asset, ratio)
                 return {"asset_id": frame["asset_id"], "asset": asset}
     return None
 
@@ -2749,7 +2829,7 @@ def _render_slot(thread_id: str, context: CampaignContext, ws: dict[str, Any],
     # and it saves a paid image per shot as a side effect. Only for the BASE
     # variant: a variant carries its own prompt, so its still legitimately
     # differs from the approved one and has to be rendered.
-    approved = _approved_keyframe(ws, shot["slot"]) if spec is None else None
+    approved = _approved_keyframe(ws, shot["slot"], None if is_video else ratio) if spec is None else None
     if approved:
         frame_id = approved["asset_id"]
         asset = approved["asset"]
@@ -2765,7 +2845,8 @@ def _render_slot(thread_id: str, context: CampaignContext, ws: dict[str, Any],
         # is only true if the seed actually rides here, not just on a re-roll.
         seed = (ws.get("reference") or {}).get("seed")
         frame = generate("image", prompt, ratio=ratio, tier="final",
-                         seed=int(seed) if seed is not None else None)
+                         seed=int(seed) if seed is not None else None,
+                         image_urls=_product_reference_urls(context))
         frame_id = store.add_asset(thread_id, key_slot, frame.get("kind", "image"), frame["path"],
                                    {**_params(context, ws, prompt, frame, ratio, variant_id,
                                               shot["slot"]), "url": frame.get("url")},
@@ -2775,6 +2856,7 @@ def _render_slot(thread_id: str, context: CampaignContext, ws: dict[str, Any],
         ws["spent"] += frame["cost"]
 
     if not is_video:
+        _verify_image_ratio(store.get_asset(frame_id), ratio)
         item = {"asset_id": frame_id, "slot": slot, "kind": frame.get("kind", "image"),
                 "preview_url": _asset_url(frame_id), "status": "ready", "cost": frame["cost"],
                 "ratio": ratio, "variant_id": variant_id, "cover_asset_id": None,
@@ -3060,7 +3142,13 @@ def _qc_cleared(ws: dict[str, Any]) -> bool:
 
 def _require_qc_clear(thread_id: str, ws: dict[str, Any]) -> bool:
     if _qc_cleared(ws):
-        return True
+        try:
+            _verify_deliverable_images(ws)
+            return True
+        except ImageRatioMismatch:
+            store.set_thread_stage(thread_id, "qc")
+            _fail(thread_id, "Image dimensions need review", "")
+            return False
     store.set_thread_stage(thread_id, "qc")
     _say(thread_id, "Delivery is held until QC clears the blocking findings.",
          question="Review the QC findings before requesting delivery again.")
@@ -3456,22 +3544,60 @@ def _require(ws: dict[str, Any], stage: str) -> None:
 
 
 def _fail(thread_id: str, summary: str, detail: str) -> None:
-    """§04: what broke in plain words + ONE Retry action — never a stack trace
-    in the card (the trace goes to the server log)."""
+    """Safe correlation survives a worker/container restart, never raw provider prose."""
     _stage_failed.set(True)
     from app.execution import fixture_mode
-    if not fixture_mode():
-        logger.error("campaign stage failed on thread %s", thread_id)
-        summary = "This step did not finish. Saved work is retained; retry only after checking the usage record if a provider request was sent."
-        detail = ""
-    if detail:
-        logger.error("campaign thread %s: %s\n%s", thread_id, summary, detail)
-    _say(thread_id, "Something broke — honestly.", [_escalation(summary, summary)],
-         question="Review the saved work and usage first. Retry this step when you are ready?",
+    exc = sys.exc_info()[1]
+    category, title = "stage_failed", "Step interrupted"
+    public = "This step did not finish; saved work is retained. Review recorded usage before retrying because a dispatched request may already be billed."
+    if isinstance(exc, ImageRatioMismatch):
+        category, title = "image_ratio_mismatch", "Image dimensions need review"
+        public = "The saved image cannot be verified at the requested aspect ratio; its asset and usage are retained. Review or explicitly replace that image before continuing; nothing was automatically regenerated."
+    elif isinstance(exc, RagUnavailable):
+        category, title = "retrieval_unavailable", "Evidence service unavailable"
+        public = "The evidence service is unavailable; this step cannot continue until it returns. Completed work remains saved; retry after the service is restored."
+    elif isinstance(exc, WorkspaceIncomplete):
+        category, title = "workspace_incomplete", "Saved state needs review"
+        public = "This step is missing required saved inputs; no new generation was started. Restore the conversation and review the latest completed stage before retrying."
+    elif isinstance(exc, (AgentHardFail, AgentValidationError, ValidationError)):
+        category, title = "validation_failed", "Output needs correction"
+        public = "The step could not produce a valid result; completed work remains saved. Review the last question and recorded usage before retrying."
+    elif isinstance(exc, PermissionError):
+        category, title = "session_unavailable", "Sign-in needs attention"
+        public = "The current session could not authorize this step. Sign in again and restore the conversation before retrying."
+    elif isinstance(exc, ValueError) and str(exc) in ("The media generation allowance has been reached", "The application spend limit has been reached", "Provider request capacity is busy"):
+        category, title = "capacity_unavailable", "Generation capacity unavailable"
+        public = "The remaining allowance or active-request capacity cannot admit this step. Review usage and arrange capacity before retrying; completed work remains saved."
+    elif isinstance(exc, MediaError):
+        category, title = "media_interrupted", "Media request interrupted"
+    support_id = store.new_id("support")
+    try:
+        thread = store.get_thread(thread_id) or {}
+    except Exception:
+        thread = {}
+    stage = thread.get("stage") if thread.get("stage") in {"intake", "brief", "options", "script", "detail", "canon", "keyframes", "generate", "creative", "qc", "done"} else "unknown"
+    known_classes = {"ImageRatioMismatch", "RagUnavailable", "RagDisabled", "RagBadRequest", "WorkspaceIncomplete", "AgentHardFail", "AgentValidationError", "ValidationError", "PermissionError", "ValueError", "MediaError", "RuntimeError", "TypeError", "KeyError", "OSError", "TimeoutError"}
+    exception_class = type(exc).__name__ if exc is not None and type(exc).__name__ in known_classes else "Exception"
+    safe = {"support_id": support_id, "category": category, "stage": stage, "exception_class": exception_class}
+    logger.error("campaign_failure %s", json.dumps(safe, sort_keys=True))
+    try:
+        store.log_artifact_activity(thread_id, support_id, "failed", json.dumps(safe, sort_keys=True))
+    except Exception:
+        logger.error("campaign_failure_record_unavailable %s", support_id)
+    # Fixture logs can retain synthetic validator detail; hosted cards cannot.
+    reason = summary if fixture_mode() else public
+    if fixture_mode() and detail:
+        logger.error("campaign fixture %s: %s\n%s", support_id, summary, detail)
+    artifact = _escalation(title, reason + " Reference: " + support_id)
+    artifact.payload.update(safe)
+    _say(thread_id, "This step did not finish; completed work is retained.", [artifact],
+         question="Review the saved work and usage first, then retry the unfinished step?",
          note="Retry is explicit and may submit a new paid request; it never starts automatically.")
 
 
+
 def _media_fail(thread_id: str, exc: MediaError, prompt: Optional[str], slot: Optional[str]) -> None:
+    _stage_failed.set(True)
     if exc.policy:
         _say(
             thread_id,
@@ -3675,10 +3801,11 @@ def _board_turn(thread_id: str, campaign_id: str) -> None:
                  # speaking the pre-v3 shape keeps working — consistent by
                  # construction, because it is derived rather than authored.
                  payload={"board": ws["board"], "detail": ws["detail"],
-                          "style_block": style},
+                          "style_block": style, "media_plan": _media_plan(ws["board"], campaign_id, thread_id)},
                  actions=_actions(("approve_board", "Approve board", "primary"),
                                   ("regenerate_board", "Regenerate", "secondary")))],
-             question="Approve the board, or name a row to change?")
+             question="Approve the board, or name a row to change?",
+             note=f"At least {_media_plan(ws['board'], campaign_id, thread_id)['minimum_operations']} media operations for canon and keyframes; one optional image edit adds one; video, voice and retries are additional; USD conversion is unknown.")
         store.log_artifact_activity(thread_id, "board", "proposed",
                                     f"v{board.version} · {len(board.shots)} shots · "
                                     f"illustrative estimate ${board.est_total_usd:.2f}; conversion unverified")
@@ -3746,6 +3873,183 @@ def _shot_cost(shot: Any) -> float:
     return float(config.MEDIA_COST_USD.get(shot.model_route, 0.0))
 
 
+def _board_reference_kinds(board: dict) -> dict[str, str]:
+    refs = {}
+    for shot in board.get("shots", []):
+        for field, kind in (("cast_refs", "character"), ("product_refs", "product"), ("env_refs", "environment")):
+            for ref in shot.get(field, []):
+                if ref in refs and refs[ref] != kind:
+                    raise ValueError("A canon identity cannot have two reference kinds")
+                refs[ref] = kind
+    return refs
+
+
+def _saved_board_canon(board: dict, campaign_id: str) -> list:
+    """Only exact owned IDs with complete assets qualify; no similarity guesses."""
+    sheets = []
+    product = _context_of(campaign_id).product
+    uploads = list(product.image_upload_ids) if product else []
+    for ref, kind in _board_reference_kinds(board).items():
+        row = store.get_canon_sheet(ref)
+        if not row or row.get("kind") != kind: return []
+        sheet = CanonSheet.model_validate({k:v for k,v in row.items() if not k.startswith("_")})
+        if not sheet.asset_ids or not all(store.get_asset(a) for a in sheet.asset_ids): return []
+        anchor = store.get_asset(sheet.anchor_asset_id) if sheet.anchor_asset_id else None
+        if kind == "product" and uploads and (not anchor or anchor["params"].get("product_pack") != uploads): return []
+        validate_canon_sheet(sheet)
+        sheets.append(sheet)
+    return sheets
+
+
+def _media_plan(board: dict, campaign_id: str, thread_id: str | None = None) -> dict:
+    refs = _board_reference_kinds(board)
+    canon_calls = 0
+    product = _context_of(campaign_id).product
+    uploads = list(product.image_upload_ids) if product else []
+    for ref, kind in refs.items():
+        row = store.get_canon_sheet(ref)
+        anchor = store.get_asset(row.get("anchor_asset_id")) if row and row.get("anchor_asset_id") else None
+        reusable = (row and row.get("kind") == kind and row.get("asset_ids")
+                    and all(store.get_asset(a) for a in row["asset_ids"])
+                    and (kind != "product" or not uploads or (anchor and anchor["params"].get("product_pack") == uploads)))
+        canon_calls += 0 if reusable else 2
+    context = _context_of(campaign_id)
+    ratios = _ratios_for("image", list(context.campaign.platforms) if context.campaign else []) if board.get("creative_type") == "image" else []
+    additional_images = len(board.get("shots", [])) * max(0, len(ratios) - 1)
+    keyframes = len(board.get("shots", []))
+    if thread_id:
+        saved = store.load_checkpoint(thread_id, "_canon_plan") or {}
+        if saved.get("input_sha256") == _canon_plan_sha(board, campaign_id):
+            plan = _validate_canon_plan(CanonPlan.model_validate(saved["plan"]), board)
+            canon_calls = _pending_canon_operations(thread_id, campaign_id, plan.sheets)
+        ws = _ws(thread_id)
+        ratio = _keyframe_ratio(context, ws, board)
+        frames = _saved_keyframe_outputs(thread_id, _keyframe_input_sha(board.get("shots", []), ratio, ws))
+        keyframes = sum(shot["slot"] not in frames for shot in board.get("shots", []))
+        if ratios:
+            rendered = {item["slot"] for item in ws.get("items", [])}
+            additional_images = sum(_slot_key(None, shot["slot"], output_ratio) not in rendered
+                for shot in board.get("shots", []) for output_ratio in ratios[1:])
+    return {"canon_operations": canon_calls, "keyframe_operations": keyframes,
+            "additional_image_operations": additional_images,
+            "minimum_operations": canon_calls + keyframes + additional_images,
+            "optional_single_edit_operations": 1, "usd_conversion": "unknown",
+            "note": "Counts exclude retries, optional edits and subsequent video or voice generation."}
+
+
+def _capacity_gate(thread_id: str, campaign_id: str, board: dict, *, needed: int | None = None) -> bool:
+    if _sample_media(): return True
+    plan = _media_plan(board, campaign_id, thread_id)
+    capacity = usage.media_capacity()
+    minimum = plan["minimum_operations"] if needed is None else needed
+    if minimum <= capacity["remaining"]: return True
+    _stage_failed.set(True)
+    choices = []
+    if _previous_canon_bindings(thread_id, board):
+        choices.append(("reuse_saved_canon", "Review saved references", "primary"))
+    if board.get("creative_type") == "image":
+        choices.append(("compact_image_plan", "Review a single-image plan", "secondary"))
+    # No Retry that promises an exhausted lifetime allowance can repair itself.
+    artifact = ArtifactEnvelope(type="escalation", id="media_capacity", title="Media allowance needs attention",
+        payload={"reason": f"This plan needs at least {minimum} more media operations; {capacity['remaining']} are available. Completed images are retained. The allowance is lifetime, not a daily reset; review a smaller plan or ask the operator for additional capacity before continuing.",
+                 "plan": plan, "capacity": capacity}, actions=_actions(*choices))
+    _say(thread_id, "Rendering is paused before another provider request.", [artifact],
+         question="Review a smaller plan, or arrange additional media capacity?",
+         note=artifact.payload["reason"] + " No allowance was reset or increased; USD conversion remains unknown.")
+    return False
+
+
+def _historical_canon(thread_id: str) -> list:
+    # A new brief deliberately clears current approval, not paid history.
+    # Read only this owned thread; choosing these images still requires review.
+    for message in reversed(store.get_messages(thread_id)):
+        if message["role"] != "agent": continue
+        for artifact in reversed(message.get("envelope", {}).get("artifacts", [])):
+            if artifact.get("type") == "canon_sheet" and artifact.get("payload", {}).get("sheets"):
+                return artifact["payload"]["sheets"]
+    return []
+
+
+def _previous_canon_bindings(thread_id: str, board: dict) -> dict:
+    """Offer, never silently apply, same-thread saved reference rebinding."""
+    kinds = _board_reference_kinds(board)
+    available = {}
+    for row in (_ws(thread_id).get("canon") or _historical_canon(thread_id)):
+        kind = row.get("kind")
+        if kind in available: return {}
+        assets = [store.get_asset(a) for a in row.get("asset_ids") or []]
+        if not assets or not all(a and a.get("thread_id") == thread_id for a in assets): return {}
+        available[kind] = row
+    if any(sum(v == kind for v in kinds.values()) > 1 for kind in set(kinds.values())): return {}
+    if any(kind not in available for kind in kinds.values()): return {}
+    if not any(ref != available[kind]["id"] for ref, kind in kinds.items()): return {}
+    return {ref: available[kind]["id"] for ref, kind in kinds.items()}
+
+
+def _reuse_saved_canon(thread_id: str, campaign_id: str) -> None:
+    ws = _ws(thread_id)
+    board = json.loads(json.dumps(ws.get("board") or {}))
+    bindings = _previous_canon_bindings(thread_id, board)
+    if not bindings:
+        _hint(thread_id, "No unambiguous saved reference set is available for this board.")
+        return
+    for shot in board.get("shots", []):
+        for field in ("cast_refs", "product_refs", "env_refs"):
+            shot[field] = [bindings.get(ref, ref) for ref in shot.get(field, [])]
+    # Product pack and owner-library validation remain mandatory. An explicit
+    # choice cannot substitute a different uploaded product unnoticed.
+    if not _saved_board_canon(board, campaign_id):
+        _hint(thread_id, "The saved references do not match the current product upload.")
+        return
+    ws["canon"] = [sheet.model_dump(mode="json") for sheet in _saved_board_canon(board, campaign_id)]
+    ws["board"] = board
+    ws["detail"] = _detail_from_board(ShotBoard.model_validate(board), ws.get("hook_rack"))
+    store.set_thread_stage(thread_id, "canon")
+    _say(thread_id, "Review these saved references with the current board; no new images or planning calls were made.",
+         [ArtifactEnvelope(type="canon_sheet", id="canon", title="Saved canon · review required",
+             payload={"sheets": ws["canon"], "board": board, "media_plan": _media_plan(board, campaign_id, thread_id)},
+             actions=_actions(("approve_canon", "Approve saved references", "primary"),
+                              ("compact_image_plan", "Review one image instead", "secondary")))],
+         question="Use these earlier images for the revised board?",
+         note="Reference names are rebound only by this explicit choice; inspect identity and setting before approving; the lifetime media allowance still applies to new keyframes.")
+
+
+def _compact_image_plan(thread_id: str, campaign_id: str) -> None:
+    ws = _ws(thread_id)
+    old = ws.get("board") or {}
+    if old.get("creative_type") != "image" or not old.get("shots"):
+        _hint(thread_id, "Only a still-image board can use this plan.")
+        return
+    board = json.loads(json.dumps(old))
+    # This is an explicit reviewed alternative, never an automatic carousel cut.
+    board["shots"] = board["shots"][:1]
+    shot = board["shots"][0]
+    shot["env_refs"] = [ref for ref in shot.get("env_refs", [])
+                        if (store.get_canon_sheet(ref) or {}).get("asset_ids")]
+    board["version"] = int(board.get("version", 1)) + 1
+    validated = ShotBoard.model_validate(board)
+    validate_shot_board(validated)
+    ws["board"] = validated.model_dump(mode="json")
+    ws["detail"] = _detail_from_board(validated, ws.get("hook_rack"))
+    store.set_thread_stage(thread_id, "detail")
+    _say(thread_id, "Review this single-image alternative; your earlier board and paid references remain in history.",
+         [ArtifactEnvelope(type="campaign_detail", id="board", title="Single-image plan · review required",
+          payload={"board": ws["board"], "detail": ws["detail"], "style_block": ws.get("style_block"),
+                   "media_plan": _media_plan(ws["board"], campaign_id, thread_id)},
+          actions=_actions(("approve_board", "Approve single-image board", "primary"),
+                           ("regenerate_board", "Request a different board", "secondary")))],
+         question="Use this one image instead of the earlier sequence?",
+         note="The product and person remain referenced; unpaid background sheets are replaced by the existing written scene description, while paid background sheets are reused; no generation has started.")
+
+
+def _canon_plan_sha(board: dict, campaign_id: str) -> str:
+    from app.agents.runner import build_system
+    system, _ = build_system("canon_plan", {})
+    return hashlib.sha256(json.dumps({"payload": {"board": board,
+        "context": _context_of(campaign_id).model_dump(mode="json")}, "system": system,
+        "model": config.STAGE_MODELS["canon"]}, sort_keys=True).encode()).hexdigest()
+
+
 def _canon_turn(thread_id: str, campaign_id: str) -> None:
     """v3 §6 — the sheets the board actually references, and nothing else."""
     try:
@@ -3765,12 +4069,24 @@ def _canon_turn(thread_id: str, campaign_id: str) -> None:
             _spawn(thread_id, _keyframes_turn, thread_id, campaign_id)
             return
 
-        plan, _log = run_agent(
-            agent="canon_plan", prompt_name="canon_plan", model=config.STAGE_MODELS["canon"],
-            user_payload={"board": board, "context": _context_of(campaign_id).model_dump(mode="json")},
-            schema=CanonPlan, dispatcher=None, use_tools=False,
-            validate=lambda p: _validate_canon_plan(p, board),
-            mock_fn=campaign_mock.mock_canon_plan)
+        payload = {"board": board, "context": _context_of(campaign_id).model_dump(mode="json")}
+        digest = _canon_plan_sha(board, campaign_id)
+        saved = store.load_checkpoint(thread_id, "_canon_plan") or {}
+        complete = _saved_board_canon(board, campaign_id)
+        if complete:
+            plan = CanonPlan(sheets=complete)
+        elif saved.get("input_sha256") == digest:
+            plan = _validate_canon_plan(CanonPlan.model_validate(saved["plan"]), board)
+        else:
+            if not _capacity_gate(thread_id, campaign_id, board): return
+            plan, _log = run_agent(
+                agent="canon_plan", prompt_name="canon_plan", model=config.STAGE_MODELS["canon"],
+                user_payload=payload, schema=CanonPlan, dispatcher=None, use_tools=False,
+                validate=lambda p: _validate_canon_plan(p, board), mock_fn=campaign_mock.mock_canon_plan)
+            store.save_checkpoint(thread_id, "_canon_plan", {"input_sha256": digest, "plan": plan.model_dump(mode="json")})
+        pending = _pending_canon_operations(thread_id, campaign_id, plan.sheets)
+        if pending and not _capacity_gate(thread_id, campaign_id, board,
+                needed=pending + _media_plan(board, campaign_id, thread_id)["keyframe_operations"]): return
         # Render the required views, then persist to the WORKSPACE library. A
         # planned sheet with no views is a promise; the sheet only becomes the
         # thing that makes campaign two cheaper once its images exist.
@@ -3812,9 +4128,8 @@ def _canon_turn(thread_id: str, campaign_id: str) -> None:
 def _resheet_turn(thread_id: str, campaign_id: str) -> None:
     """Re-render the sheets at the higher resolution the gate offered.
 
-    The library copy is DROPPED first. `_render_canon_views` reuses anything
-    already stored — that is the retention mechanic — so without this the
-    upgrade would silently hand back the same 1K sheet and charge for it.
+    Sharper versions get a distinct identity; old paid rows and current board
+    bindings survive any failure. Rebind only after the complete set succeeds.
     """
     try:
         if not _require_product_photo(thread_id, _context_of(campaign_id)):
@@ -3825,15 +4140,22 @@ def _resheet_turn(thread_id: str, campaign_id: str) -> None:
         if not planned:
             _say(thread_id, "There are no canon sheets to re-render yet.")
             return
+        replacements = {}
         for sheet in planned:
-            store.delete_canon_sheet(sheet.id)
+            previous_id = sheet.id
+            suffix = hashlib.sha256(json.dumps([thread_id, previous_id, config.IMAGE_RESOLUTION_SHARP]).encode()).hexdigest()[:12]
+            sheet.id = f"{previous_id[:80]}-sharp-{suffix}"
+            replacements[previous_id] = sheet.id
             sheet.asset_ids, sheet.coverage = [], {}
-            sheet.sheet_asset_id = sheet.sheet_url = None
+            sheet.anchor_asset_id = sheet.sheet_asset_id = sheet.sheet_url = None
 
         prev = config.IMAGE_RESOLUTION_DEFAULT
         sheets = _render_canon_views(thread_id, planned, campaign_id,
                                      resolution=config.IMAGE_RESOLUTION_SHARP)
         ws["canon"] = [s.model_dump(mode="json") for s in sheets]
+        for shot in (ws.get("board") or {}).get("shots", []):
+            for field in ("cast_refs", "product_refs", "env_refs"):
+                shot[field] = [replacements.get(ref, ref) for ref in shot.get(field, [])]
         store.log_artifact_activity(thread_id, "canon", "refined",
                                     f"re-rendered at {config.IMAGE_RESOLUTION_SHARP}")
         _say(thread_id,
@@ -3906,6 +4228,10 @@ def _validate_canon_plan(plan: "CanonPlan", board: dict[str, Any]) -> "CanonPlan
             wanted.update(shot.get(key) or [])
     planned = {s.id for s in plan.sheets}
     errors: list[str] = []
+    kinds = _board_reference_kinds(board)
+    if len(planned) != len(plan.sheets): errors.append("Duplicate canon identities are not allowed")
+    for sheet in plan.sheets:
+        if kinds.get(sheet.id) != sheet.kind: errors.append("Canon kind must match the board reference")
     missing = sorted(wanted - planned)
     if missing:
         errors.append(f"the board references {missing} but no sheet is planned for them")
@@ -3921,6 +4247,20 @@ def _validate_canon_plan(plan: "CanonPlan", board: dict[str, Any]) -> "CanonPlan
     return plan
 
 
+def _keyframe_input_sha(shots: list, ratio: str, ws: dict) -> str:
+    return hashlib.sha256(json.dumps({"shots": shots, "ratio": ratio,
+        "canon": [(row.get("id"), row.get("sheet_asset_id")) for row in ws.get("canon", [])],
+        "style": ws.get("style_block"), "models": config.MEDIA_MODELS,
+        "pixelbin_models": config.PIXELBIN_MODELS, "provider": config.MEDIA_PROVIDER}, sort_keys=True).encode()).hexdigest()
+
+
+def _saved_keyframe_outputs(thread_id: str, fingerprint: str) -> dict:
+    checkpoint = store.load_checkpoint(thread_id, "_keyframe_outputs") or {}
+    saved = checkpoint.get("outputs", {}) if checkpoint.get("input_sha256") == fingerprint else {}
+    return {slot: result for slot, result in saved.items()
+            if (asset := store.get_asset(result.get("asset_id"))) and asset.get("thread_id") == thread_id}
+
+
 def _keyframes_turn(thread_id: str, campaign_id: str) -> None:
     """v3 §7 — THE HARD GATE. Stills are generated and must be approved before
     any motion is paid for."""
@@ -3934,11 +4274,22 @@ def _keyframes_turn(thread_id: str, campaign_id: str) -> None:
         shots = board.get("shots", [])
         policy = _policy_of(campaign_id)
 
-        ratio = (ws.get("brief") or {}).get("aspect_ratios", ["9:16"])[0]
+        ratio = _keyframe_ratio(_context_of(campaign_id), ws, board)
         frames: list[dict[str, Any]] = []
         unusable: list[str] = []
+        fingerprint = _keyframe_input_sha(shots, ratio, ws)
+        if ws.pop("regenerate_keyframes", False):
+            store.save_checkpoint(thread_id, "_keyframe_outputs", {"input_sha256": fingerprint, "outputs": {}})
+        saved = _saved_keyframe_outputs(thread_id, fingerprint)
+        needed = sum(shot["slot"] not in saved for shot in shots) + _media_plan(board, campaign_id, thread_id)["additional_image_operations"]
+        if not _capacity_gate(thread_id, campaign_id, board, needed=needed): return
         for shot in shots:
-            asset = _render_keyframe(thread_id, shot, ratio, ws)
+            asset = saved.get(shot["slot"])
+            if not asset:
+                asset = _render_keyframe(thread_id, shot, ratio, ws)
+                saved[shot["slot"]] = asset
+                store.save_checkpoint(thread_id, "_keyframe_outputs", {"input_sha256": fingerprint, "outputs": saved})
+            _verify_image_ratio(store.get_asset(asset["asset_id"]), ratio)
             unusable.extend(asset["dropped"])
             frames.append({
                 "shot_slot": shot["slot"], "asset_id": asset["asset_id"],
@@ -3957,7 +4308,7 @@ def _keyframes_turn(thread_id: str, campaign_id: str) -> None:
 
         seeded = sum(1 for f in frames if f["refs_used"])
         _say(thread_id,
-             f"{len(frames)} keyframe(s) — nothing animates until every one is approved.",
+             f"{len(frames)} keyframe(s) — review and approve every frame before continuing.",
              [ArtifactEnvelope(
                  type="keyframe_board", id="keyframes",
                  title=f"Keyframes · 0/{len(frames)} approved",
@@ -4092,14 +4443,23 @@ def _qc_turn(thread_id: str, campaign_id: str) -> None:
         context = _context_of(campaign_id)
         brief = ws.get("brief") or {}
         board = ws.get("board") or {}
+        from app.schemas import QCFinding
+        ratio_findings = []
+        ratio_status = "skip"
+        try:
+            if _verify_deliverable_images(ws): ratio_status = "pass"
+        except ImageRatioMismatch:
+            ratio_status = "fail"
+            ratio_findings.append(QCFinding(tier="blocking", check="image_aspect_ratio",
+                detail="A saved image has mismatched or unreadable dimensions; review or explicitly replace it before delivery"))
         report = build_qc_report(
-            findings=[],
+            findings=ratio_findings,
             automated={
                 # Honest `skip`: these detectors are not wired yet, and rendering
                 # an unrun check as `pass` would be a lie the report inherits.
                 "identity_drift": "skip", "hand_anomalies": "skip",
                 "label_ocr": "skip", "lip_sync": "skip", "loudness": "skip",
-                "duration_and_ratio": "pass",
+                "duration_and_ratio": "skip", "image_aspect_ratio": ratio_status,
             },
             rights_ledger=list(context.brand.rights_ledger) if context.brand else [],
             final_copy=" ".join(filter(None, [board.get("copy_primary"), board.get("cta")])),
@@ -4345,6 +4705,36 @@ def _canon_sheet_prompt(sheet: "CanonSheet", views: tuple[str, ...],
     return " ".join(parts)
 
 
+def _canon_input_sha(sheet: CanonSheet, product_uploads: list, want: str, anchor_prompt: str) -> str:
+    return hashlib.sha256(json.dumps({"sheet": sheet.model_dump(mode="json", exclude={
+        "asset_ids", "anchor_asset_id", "sheet_asset_id", "sheet_url", "coverage", "provider", "model"}),
+        "anchor_prompt": anchor_prompt, "product_uploads": product_uploads,
+        "resolution": want, "tier": config.CANON_SHEET_TIER,
+        "model": planned_model("image", config.CANON_SHEET_TIER)}, sort_keys=True).encode()).hexdigest()
+
+
+def _pending_canon_operations(thread_id: str, campaign_id: str, sheets: list) -> int:
+    product = _context_of(campaign_id).product
+    uploads = list(product.image_upload_ids) if product else []
+    pending = 0
+    for sheet in sheets:
+        if not sheet.required_views(): continue
+        board = {"shots": [{ {"product":"product_refs", "character":"cast_refs", "environment":"env_refs"}[sheet.kind]: [sheet.id]}]}
+        if _saved_board_canon(board, campaign_id): continue
+        prompt = _canon_anchor_prompt(sheet)
+        if sheet.kind == "product" and uploads:
+            prompt += " Use the uploaded product exactly; preserve its shape, colours and visible markings."
+        want = config.IMAGE_RESOLUTION_DEFAULT
+        digest = _canon_input_sha(sheet, uploads, want, prompt)
+        key = "_canon_media_" + hashlib.sha256(sheet.id.encode()).hexdigest()[:24]
+        saved = store.load_checkpoint(thread_id, key) or {}
+        valid = saved.get("input_sha256") == digest
+        for role in ("anchor_id", "sheet_id"):
+            asset = store.get_asset(saved.get(role)) if valid and saved.get(role) else None
+            pending += int(not (asset and asset.get("thread_id") == thread_id and asset["params"].get("canon_id") == sheet.id))
+    return pending
+
+
 def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
                         resolution: Optional[str] = None) -> list:
     """Generate ONE labelled reference sheet per canon sheet, then save it.
@@ -4366,6 +4756,7 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
     product = _context_of(campaign_id).product
     product_uploads = list(product.image_upload_ids) if product else []
     for sheet in sheets:
+        validate_canon_sheet(sheet, require_coverage=False)
         existing = store.get_canon_sheet(sheet.id)
         anchor_asset = store.get_asset(existing.get("anchor_asset_id")) if existing and existing.get("anchor_asset_id") else None
         same_product = (not product_uploads or sheet.kind != "product" or
@@ -4404,37 +4795,58 @@ def _render_canon_views(thread_id: str, sheets: list, campaign_id: str,
             product_refs = _product_reference_urls(_context_of(campaign_id)) if sheet.kind in ("product", "environment") else []
             if product_refs and sheet.kind == "product":
                 anchor_prompt += " Use the uploaded product exactly; preserve its shape, colours and visible markings."
-            anchor = generate("image", anchor_prompt, ratio="1:1",
-                              tier=config.CANON_SHEET_TIER, resolution=want, image_urls=product_refs)
-            anchor_id = store.add_asset(
-                thread_id, f"canon_{sheet.id}_anchor", anchor.get("kind", "image"),
-                anchor["path"],
-                {"provider": anchor.get("provider"), "consumed_credits": anchor.get("consumed_credits"), "provider_job_id": anchor.get("provider_job_id"), "model": anchor["model"], "prompt": anchor_prompt, "canon_id": sheet.id,
-                 "ratio": "1:1", "resolution": want, "role": "anchor",
-                 "product_pack": product_uploads if sheet.kind == "product" else [],
-                 "context_product_pack": product_uploads if sheet.kind == "environment" else [],
-                 "url": anchor.get("url")},
-                anchor["cost"])
-            store.log_generation(thread_id, anchor_id, "generate", prompt=anchor_prompt,
-                                 model=anchor["model"], seed=str(anchor.get("seed")),
-                                 cost=anchor["cost"])
+            # Persist each successful paid output independently. A Retry may
+            # resume it after a process restart; changing the inputs invalidates it.
+            digest = _canon_input_sha(sheet, product_uploads, want, anchor_prompt)
+            key = "_canon_media_" + hashlib.sha256(sheet.id.encode()).hexdigest()[:24]
+            saved = store.load_checkpoint(thread_id, key) or {}
+            saved = saved if saved.get("input_sha256") == digest else {"input_sha256": digest}
+            def owned_output(asset_id, role, expected_prompt):
+                asset = store.get_asset(asset_id) if asset_id else None
+                params = (asset or {}).get("params") or {}
+                return asset if (asset and asset.get("thread_id") == thread_id
+                    and params.get("canon_id") == sheet.id and params.get("prompt") == expected_prompt
+                    and params.get("resolution") == want
+                    and (role != "anchor" or params.get("role") == "anchor")) else None
+            anchor_asset = owned_output(saved.get("anchor_id"), "anchor", anchor_prompt)
+            if not anchor_asset:
+                # Compatibility with successful pre-checkpoint anchors: match
+                # exact owned inputs, never infer identity from a similar label.
+                for candidate in reversed(store.list_assets(thread_id=thread_id)):
+                    params = candidate.get("params") or {}
+                    pack = params.get("product_pack") if sheet.kind == "product" else params.get("context_product_pack") if sheet.kind == "environment" else []
+                    if pack == (product_uploads if sheet.kind in ("product", "environment") else []) and params.get("model") == planned_model("image", config.CANON_SHEET_TIER):
+                        anchor_asset = owned_output(candidate["id"], "anchor", anchor_prompt)
+                        if anchor_asset: break
+            if anchor_asset:
+                anchor_id = anchor_asset["id"]
+            else:
+                anchor = generate("image", anchor_prompt, ratio="1:1",
+                                  tier=config.CANON_SHEET_TIER, resolution=want, image_urls=product_refs)
+                anchor_id = store.add_asset(thread_id, f"canon_{sheet.id}_anchor", anchor.get("kind", "image"), anchor["path"],
+                    {"provider": anchor.get("provider"), "consumed_credits": anchor.get("consumed_credits"), "provider_job_id": anchor.get("provider_job_id"),
+                     "model": anchor["model"], "prompt": anchor_prompt, "canon_id": sheet.id, "ratio": "1:1", "resolution": want, "role": "anchor",
+                     "product_pack": product_uploads if sheet.kind == "product" else [],
+                     "context_product_pack": product_uploads if sheet.kind == "environment" else [], "url": anchor.get("url")}, anchor["cost"])
+                store.log_generation(thread_id, anchor_id, "generate", prompt=anchor_prompt, model=anchor["model"], seed=str(anchor.get("seed")), cost=anchor["cost"])
+            saved["anchor_id"] = anchor_id
+            store.save_checkpoint(thread_id, key, saved)
             anchor_url = _seed_url(anchor_id, store.get_asset(anchor_id) or {})
-
             prompt = _canon_sheet_prompt(sheet, views, anchored=bool(anchor_url))
-            frame = generate("image", prompt, ratio="16:9",
-                             tier=config.CANON_SHEET_TIER, resolution=want,
-                             image_urls=[anchor_url] if anchor_url else [])
-            asset_id = store.add_asset(
-                thread_id, f"canon_{sheet.id}", frame.get("kind", "image"), frame["path"],
-                {"provider": frame.get("provider"), "consumed_credits": frame.get("consumed_credits"), "provider_job_id": frame.get("provider_job_id"), "model": frame["model"], "prompt": prompt, "canon_id": sheet.id,
-                 "views": list(views), "resolution": want, "ratio": "16:9",
-                 # The PROVIDER url, kept because a local /api/assets path is not
-                 # fetchable by a generator's servers — Stage 3 needs this one.
-                 "url": frame.get("url")},
-                frame["cost"])
-            store.log_generation(thread_id, asset_id, "generate", prompt=prompt,
-                                 model=frame["model"], seed=str(frame.get("seed")),
-                                 cost=frame["cost"])
+            frame_asset = owned_output(saved.get("sheet_id"), "sheet", prompt)
+            if not frame_asset:
+                frame = generate("image", prompt, ratio="16:9", tier=config.CANON_SHEET_TIER, resolution=want,
+                                 image_urls=[anchor_url] if anchor_url else [])
+                asset_id = store.add_asset(thread_id, f"canon_{sheet.id}", frame.get("kind", "image"), frame["path"],
+                    {"provider": frame.get("provider"), "consumed_credits": frame.get("consumed_credits"), "provider_job_id": frame.get("provider_job_id"),
+                     "model": frame["model"], "prompt": prompt, "canon_id": sheet.id, "role": "sheet", "anchor_asset_id": anchor_id,
+                     "views": list(views), "resolution": want, "ratio": "16:9", "url": frame.get("url")}, frame["cost"])
+                saved["sheet_id"] = asset_id
+                store.save_checkpoint(thread_id, key, saved)
+                store.log_generation(thread_id, asset_id, "generate", prompt=prompt, model=frame["model"], seed=str(frame.get("seed")), cost=frame["cost"])
+                frame_asset = store.get_asset(asset_id)
+            asset_id = frame_asset["id"]
+            frame = frame_asset["params"]
             # The anchor rides in asset_ids too: it is the identity the sheet
             # was built from, and deleting it would make the sheet unexplainable.
             sheet.asset_ids = [asset_id, anchor_id]

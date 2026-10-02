@@ -1,0 +1,56 @@
+{
+  "scenario": "PL-FMEA-115",
+  "method": "Actual stored failed pipeline job and checkpoint; main.get_thread response plus normal handle_event and workspace restart under provider-denied fixtures",
+  "backend_runtime_changes": false,
+  "focused_test": {
+    "path": "api/tests/test_fmea_flow.py",
+    "symbol": "test_failed_job_recovery_coexists_with_current_saved_reference_question",
+    "status": "passed"
+  },
+  "local_fixture": {
+    "fixture": "isolated preview; real stored failed job and GET recovery plus current capacity choices; seed-only capacity patch",
+    "thread_id": "thr_71ff7e93d6",
+    "campaign_id": "srs_be5912cb6d",
+    "url": "http://127.0.0.1:8971/studio/thread/thr_71ff7e93d6?kind=campaign",
+    "failed_job_id": "run_bd14ad2356",
+    "job_status": "failed",
+    "recovery_event": "retry",
+    "question_events": [
+      "reuse_saved_canon",
+      "compact_image_plan"
+    ],
+    "last_seq": 13,
+    "placeholder_assets": 6,
+    "asset_hashes_unchanged": true,
+    "usage_rows_unchanged": true,
+    "provider_calls": 0,
+    "quota_mutations": 0,
+    "production_mutations": 0,
+    "api_restart_required_for_cached_workspace": true
+  },
+  "fixture_sha256": "4bdadcba7ed888d83b687919f547224bfbf079ff35f82f6de7b106e850509949",
+  "browser": {
+    "status": "passed",
+    "receipt": "browser-qa.json",
+    "checks": {
+      "fixture": "thr_71ff7e93d6",
+      "real_persisted_job_status": "failed",
+      "get_thread_recovery_present": true,
+      "new_question_takes_precedence": true,
+      "clicked": "Review saved references",
+      "reload_shows": [
+        "Approve saved references",
+        "Review one image instead"
+      ],
+      "generic_retry_visible_after_reload": false,
+      "saved_sheets": 3,
+      "provider_calls": 0,
+      "screenshots": [
+        "screenshots/plotline-failed-job-recovery.png",
+        "screenshots/plotline-failed-job-restored.png"
+      ]
+    }
+  },
+  "provider_calls": 0,
+  "production_mutations": 0
+}

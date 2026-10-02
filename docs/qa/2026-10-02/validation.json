@@ -1,0 +1,160 @@
+{
+  "at": "2026-10-02T07:40:29.633158+00:00",
+  "base": "3cec4708763e91062f19772a19f7a70406afc54a",
+  "python": {
+    "passed": 333,
+    "skipped": 4,
+    "failures": 0,
+    "errors": 0,
+    "skip_reason": "four existing ffmpeg-dependent tests; ffmpeg absent locally",
+    "real_postgres_contracts": "executed against isolated synthetic test DB"
+  },
+  "web": {
+    "client_tls_tests": 16,
+    "typecheck": "passed after final renderer copy",
+    "production_build": "passed final packaged source c77258ede66d2f0a4d5da89106d61020e4b746914baeaf1974d7fa2fc0ca57be on AWS; network-none smoke passed",
+    "log": "web-production-build.log",
+    "final_build": "Root-owned final image package includes tablet correction; inspect root release receipts"
+  },
+  "fmea": {
+    "scenarios": 115,
+    "categories": 12,
+    "status_counts": {
+      "passing": 82,
+      "fixed": 21,
+      "checked": 7,
+      "unverified": 4,
+      "mitigated": 1
+    }
+  },
+  "proxy": "session-authored outputs through actual prompts/runner/driver; media placeholders; no provider or visual validation",
+  "network_events": {
+    "loopback_network_guard_installed": 19
+  },
+  "provider_calls": 0,
+  "live_mutations": 0,
+  "secret_scan": {
+    "selection_files": 69,
+    "findings": 0,
+    "external_receipt": "/Users/macbook/Documents/Codex/portfolio/_workstreams/app-fmea-20261002/plotline-fmea115-secret-scan.json"
+  },
+  "source": [
+    {
+      "path": "api/.power-coding/config.json",
+      "sha256": "2d6693a2f1466c95314a31903a0982319bbe67b84387cca18ae3c6377bbc6988"
+    },
+    {
+      "path": "api/Handoff.MD",
+      "sha256": "d1dd2a321026d51c77645e7cae90b829e0dd500e312e899822f193ed77518607"
+    },
+    {
+      "path": "api/Learning.MD",
+      "sha256": "d0254d1f80cd6bf75db3c5c08b6560401b5dc9c428cf5deb7715307b2a1fa2fb"
+    },
+    {
+      "path": "api/app/campaign.py",
+      "sha256": "d403e503e36d3557f2c8978d376756301ce888114b4e0a63700047d66e692364"
+    },
+    {
+      "path": "api/app/database.py",
+      "sha256": "f6226689e4c88ed14619cb685b6d984fe23dd644a8cf55d7c056a22ac817ac4f"
+    },
+    {
+      "path": "api/app/main.py",
+      "sha256": "d46235232fdf6fd11aa0b8297570f912fc813bdcf24c2938a20293d2534fc73e"
+    },
+    {
+      "path": "api/app/media.py",
+      "sha256": "7b0eac8e8d819513eef73e353e0d6e60499e0900f5c6e91415653abdb69769e5"
+    },
+    {
+      "path": "api/app/usage.py",
+      "sha256": "0176a31e673b8119d6ca4100e6e2b37d5ea0479bc7db20846176a10d76e3da2c"
+    },
+    {
+      "path": "api/app/validators.py",
+      "sha256": "987079c3dbf7eca666c40bb5338f58017f0909bbd8574cd4286ec9571922021b"
+    },
+    {
+      "path": "api/docs/mermaid/10-agentic-flow.mmd",
+      "sha256": "0bdda3c3d3c7400c9fbf4a5099d6810d25a7587511bf24dafae7a8430752ce36"
+    },
+    {
+      "path": "api/prompts/shot_board.md",
+      "sha256": "845c1ae33794cd2740d129aa0c204bb063944a83d529de864f2ad51d1eb8a911"
+    },
+    {
+      "path": "api/tests/test_fmea_flow.py",
+      "sha256": "8cc35dfac177f509b2250e8073faa7d2e4f566572c5d2897611582d9c7e68bcd"
+    },
+    {
+      "path": "api/tests/test_marketing.py",
+      "sha256": "e22d055ceee5f2412aa5de3a431c6ef7abee1d44faa0386f309aebeb61301ac1"
+    },
+    {
+      "path": "api/tests/test_portfolio.py",
+      "sha256": "e03f30146cebea0ef52d31e7eaf99ef13d84bc6b25c089192ccb4e224779ceb7"
+    },
+    {
+      "path": "api/tests/test_ratio_output.py",
+      "sha256": "7b757b91ec40cf3eca2611b3f6517d2fc5a1c8171de42500f3e2ef941412503a"
+    },
+    {
+      "path": "api/tests/test_session_prompt_proxy.py",
+      "sha256": "64f0102f2c6cd6f051337f96fd43a0ca1713c63dd0510bbd074c1a5e8f039f43"
+    },
+    {
+      "path": "web/app/globals.css",
+      "sha256": "da919b2e84a331dcdb016121850c46a34ba05b94bf42d4e572912204bbf57ace"
+    },
+    {
+      "path": "web/app/studio/thread/[threadId]/page.tsx",
+      "sha256": "1d8f75c640128342f3475a151d9724da57282972b9b72d71358d79fe2e49750e"
+    },
+    {
+      "path": "web/components/campaign-artifacts.tsx",
+      "sha256": "8b1688e80dfd153dbe9913431bcc59a58f1eedbd640f3986f3988147053bfef0"
+    },
+    {
+      "path": "web/tests/database-tls.test.mjs",
+      "sha256": "93f3b4450436ef127da3ff0e366cd2700c44b8c3a8c8dec187a3152dddf4e473"
+    }
+  ],
+  "source_sha256": "72ff36895fc59f5d1bd2e21929b4ee6b10d1b0d7abe9a1abbcea3eec488e5588",
+  "root_owned_files": [
+    "web/app/studio/thread/[threadId]/page.tsx"
+  ],
+  "pending": [
+    "User approval for one paid image and one low-cost grader request; no paid request has been made",
+    "Affected Plotline owner normal sign-in and approved one-operation allowance increase before paid continuation"
+  ],
+  "local_fixture": {
+    "thread_id": "thr_71ff7e93d6",
+    "synthetic_media": true,
+    "usage_rows_changed": false,
+    "quota": "patched only within guarded seed process",
+    "api_pid": 14973
+  },
+  "local_rag": {
+    "pid": 69076,
+    "port": 8968,
+    "mode": "DEV_STUB_SAMPLE_DATA",
+    "guarded": true
+  },
+  "ratio_validation": "ratio-validation.json",
+  "additional_independent_review": "_workstreams/app-fmea-20261002/ratio-independent-final-review.json",
+  "recovery_regression": {
+    "test": "test_failed_job_recovery_coexists_with_current_saved_reference_question",
+    "result": "passed",
+    "receipt": "recovery-priority.json",
+    "backend_runtime_change": false,
+    "browser": "passed: saved references clicked, three sheets, fresh approval retained after reload, generic Retry absent"
+  },
+  "release": {
+    "status": "deployed_free_qa_complete_paid_acceptance_pending",
+    "receipt": "aws-release.json",
+    "provider_calls": 0
+  },
+  "source_hash_algorithm": "SHA256 of compact sorted-key JSON source array",
+  "finalized_at": "2026-10-02T07:46:03.358948+00:00"
+}

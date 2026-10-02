@@ -1,0 +1,123 @@
+{
+  "date": "2026-10-02",
+  "method": "Codex in-app browser; local normal-auth Plotline with mock LLM/media and denied external DNS/sockets",
+  "provider_calls": 0,
+  "viewports": [
+    1280,
+    701,
+    390
+  ],
+  "checks": {
+    "photo_plus_one_line_starts_chat": true,
+    "clarification_in_chat_accepted": true,
+    "brief_board_canon_keyframe_approval_to_delivery": true,
+    "bundle_request_http_200": true,
+    "keyboard_artifact_tabs_arrow_and_home": true,
+    "recovery_offers_saved_references_before_render": true,
+    "recovery_displays_three_preexisting_sheets": true,
+    "reference_images_loaded_natural_width": 720,
+    "recovery_requests_fresh_approval_after_reload": true,
+    "explicit_single_image_alternative_requires_new_approval": true,
+    "document_width_equals_viewport": true,
+    "mobile_light_and_dark_visually_checked": true,
+    "bundle_downloadMedia_completed": true
+  },
+  "notes": [
+    "Full session-as-model driver evidence is separately in proxy/results; basic browser fixtures do not establish model/content quality.",
+    "The local reference service was initially absent; restored it and retried successfully. This is recorded as a local QA setup fault, not a production diagnosis.",
+    "Browser download-event observer timed out; the request returned HTTP200 and the supported downloadMedia operation then completed. ZIP contents are separately checked by backend tests.",
+    "Recovery test uses visibly labeled synthetic assets and a seeded exhaustion card, not user production assets or altered live quota."
+  ],
+  "screenshots": [
+    {
+      "path": "screenshots/plotline-minimal-input-desktop.png",
+      "sha256": "4003a985dc763033124f0634fcab75117458e6684cadeed6dedd6203f735f63e"
+    },
+    {
+      "path": "screenshots/plotline-minimal-input-mobile.png",
+      "sha256": "f3488d90352a96f2c5e43417d7e2efddf6520c47e0f0e395264b955c86b4f435"
+    },
+    {
+      "path": "screenshots/plotline-capacity-desktop.png",
+      "sha256": "40bacdeaf978798a3b882ed522c61ad4ebd3fc02b22ab2f8feb647fa5dbb2473"
+    },
+    {
+      "path": "screenshots/plotline-recovered-canon-desktop.png",
+      "sha256": "dc04f0cab0eaf32a1dd43fe737fbc920619073697358727c41c8ce50f99cdb9f"
+    },
+    {
+      "path": "screenshots/plotline-recovered-canon-mobile.png",
+      "sha256": "e0ce26d6cd1afdf7dddbf462948c9442f315483fec1475950bd3dedc34bc6e6b"
+    },
+    {
+      "path": "screenshots/plotline-recovery-dark-mobile.png",
+      "sha256": "47e95554485f31f12ddd477b2ca11c7c5fea1607b9720b313cfa724aaf2e2a70"
+    },
+    {
+      "path": "screenshots/plotline-free-delivery.png",
+      "sha256": "10d0cd08f57249b2961dc1dcaeb165957ab9c942d005fe69b3de499ca280fa7f"
+    },
+    {
+      "path": "screenshots/plotline-tablet-before.png",
+      "sha256": "d7910c666ffc0960ad924945a52103920c79477d06dc5881e1a431d011944769"
+    },
+    {
+      "path": "screenshots/plotline-tablet-after.png",
+      "sha256": "0bd44f0d0a08d7c372664f605f05e4935a742acf2d72eca9fcd25523f370c597"
+    },
+    {
+      "path": "screenshots/plotline-failed-job-recovery.png",
+      "sha256": "a0bab6756fec92fa1506ffd8166a5267daa05b0e5c754c61aabaab011483f026"
+    },
+    {
+      "path": "screenshots/plotline-failed-job-restored.png",
+      "sha256": "c98c147e51f614ce5398581afbad88d5f8cf44af77fb37d56905797521c162f7"
+    },
+    {
+      "path": "screenshots/plotline-live-tablet.png",
+      "sha256": "4007e8fff22db631ae9ec008a358107314eb6d291c965b22fd6aa3539df8ab98"
+    }
+  ],
+  "tablet_followup": {
+    "width": 701,
+    "document_width": 701,
+    "layout": "column",
+    "conversation_width": 701,
+    "composer_width": 398.2109375,
+    "native_before": "squeezed split panes with cropped prompt at701px",
+    "screenshots": [
+      "screenshots/plotline-tablet-before.png",
+      "screenshots/plotline-tablet-after.png"
+    ],
+    "provider_calls": 0
+  },
+  "failed_job_followup": {
+    "fixture": "thr_71ff7e93d6",
+    "real_persisted_job_status": "failed",
+    "get_thread_recovery_present": true,
+    "new_question_takes_precedence": true,
+    "clicked": "Review saved references",
+    "reload_shows": [
+      "Approve saved references",
+      "Review one image instead"
+    ],
+    "generic_retry_visible_after_reload": false,
+    "saved_sheets": 3,
+    "provider_calls": 0,
+    "screenshots": [
+      "screenshots/plotline-failed-job-recovery.png",
+      "screenshots/plotline-failed-job-restored.png"
+    ]
+  },
+  "live_release": {
+    "url": "https://plotline.3-6-183-210.sslip.io",
+    "normal_sign_in": true,
+    "prepared_sample_clearly_labeled": true,
+    "viewport": 701,
+    "document_width": 701,
+    "layout": "column",
+    "composer_width": 398.2109375,
+    "screenshot": "screenshots/plotline-live-tablet.png",
+    "provider_calls": 0
+  }
+}

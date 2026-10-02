@@ -35,7 +35,15 @@ flowchart TB
   ASK -.->|"next typed reply retains context"| MODE
   INTAKE -->|"ready; ordinary yes or go ahead"| BRIEF
   BRIEF -->|"approve"| OPTIONS -->|"approve direction"| DETAIL
-  DETAIL -->|"approve board"| CANON -->|"approve canon"| KEYFRAME
+  CAPACITY{"Whole-path media preflight [FUNCTION]<br/>in: owned saved outputs, plan and lifetime headroom<br/>out: enough capacity for remaining canon and keyframes?"}
+  SMALL["Explicit smaller or saved-reference review [FUNCTION]<br/>in: current board and same-thread paid canon history<br/>out: fresh approval required, no hidden generation"]
+  SAVED["Input-bound paid checkpoints [FUNCTION]<br/>in: validated plan, successful anchor, sheet or keyframe<br/>out: owner-scoped reusable output across restart"]
+  DETAIL -->|"approve board"| CAPACITY
+  CAPACITY -->|"enough"| CANON -->|"approve canon"| KEYFRAME
+  CAPACITY -->|"insufficient; no new dispatch"| SMALL --> DETAIL
+  CANON -.-> SAVED
+  KEYFRAME -.-> SAVED
+  SAVED -.->|"exact same inputs only"| RECOVER
   CANON -.->|"explicit environment edit only"| ENV --> CANON
   CANON -->|"information question: current actions, no dispatch"| ASK
   KEYFRAME -->|"all approved"| CONFIRM
@@ -53,8 +61,8 @@ flowchart TB
   classDef term fill:#e5e7eb,stroke:#6b7280,color:#111827;
   classDef ask fill:#cffafe,stroke:#0891b2,color:#083344;
   classDef data fill:#ede9fe,stroke:#7c3aed,color:#2a0a4a;
-  class NAME,SAMPLE,FIX,RESERVE,TOOLS,VALIDATE,BRIEF,OPTIONS,DETAIL,CANON,ENV,CONFIRM,MEDIA,CREATIVE,QC,JOB fn;
-  class MODE,INTAKE,KEYFRAME dec;
+  class NAME,SAMPLE,FIX,RESERVE,TOOLS,VALIDATE,BRIEF,OPTIONS,DETAIL,CANON,ENV,CONFIRM,MEDIA,CREATIVE,QC,JOB,SMALL,SAVED fn;
+  class MODE,INTAKE,KEYFRAME,CAPACITY dec;
   class ASK,RECOVER ask;
   class LLM agent;
   class DONE term;

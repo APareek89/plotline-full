@@ -180,6 +180,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
   // The newest turn owns the ask. A newer status/error must not resurrect a
   // prior approval; an accepted request also hides its controls until readback.
   const question = useMemo(() => awaitingUpdate ? null : latestCampaignQuestion(messages), [messages, awaitingUpdate]);
+  const hasRecoveryChoices = Boolean(question?.q.options.some((option) => option.event && option.event !== "retry"));
 
   const [picked, setPicked] = useState<string[]>([]);
   useEffect(() => setPicked([]), [question?.msgId]);
@@ -303,7 +304,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
             <span className="h-[5px] w-[5px] rounded-full bg-white shadow-[4px_0_0_#fff]" />
           </span>
           <span className="flex-1 truncate text-[14px] font-semibold">{name}</span>
-          <span className="text-[13px] text-[var(--ms-text-2)]">
+          <span className="shrink-0 text-[13px] text-[var(--ms-text-2)]">
             {thread?.stage ? `stage · ${thread.stage}` : ""}
           </span>
         </header>
@@ -322,7 +323,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
               <AgentTurn key={m.id} envelope={m.envelope as AgentMessage} />
             ) : (
               <div key={m.id} className="flex justify-end">
-                <div className="max-w-[80%] rounded-[12px] bg-[var(--ms-elev)] px-3.5 py-2.5 text-[15px] leading-[22px]">
+                <div className="min-w-0 max-w-[80%] whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-[12px] bg-[var(--ms-elev)] px-3.5 py-2.5 text-[15px] leading-[22px]">
                   {(m.envelope as any).text ??
                     friendlyAction(m.envelope as any)}
                 </div>
@@ -352,7 +353,9 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
             </p>
           )}
 
-          {thread?.recovery && (
+          {/* The current server ask can offer a specific recovery path even
+              while the durable job is failed. Generic Retry is a fallback. */}
+          {thread?.recovery && !hasRecoveryChoices && (
             <div className="mb-3 rounded-xl border border-[var(--ms-line)] bg-[var(--ms-elev)] p-3">
               <p className="mb-2 text-[12px] text-[var(--ms-text-2)]">{thread.recovery.warning}</p>
               <button className="cb-btn cb-btn-primary" disabled={busy || offline || Boolean(working) || awaitingUpdate}
@@ -363,7 +366,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
           )}
 
           {/* ---- the ask, directly above the composer ---- */}
-          {question && !thread?.recovery && (
+          {question && (!thread?.recovery || hasRecoveryChoices) && (
             <AskStrip
               question={question.q}
               picked={picked}
@@ -397,6 +400,8 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
           <span className="flex-1 truncate text-[14px] font-semibold">{name}</span>
           <button
             onClick={() => setFollowing((f) => !f)}
+            aria-pressed={following}
+            aria-label={following ? "Pause automatic tab updates" : "Follow automatic tab updates"}
             title={
               following
                 ? "The agent switches tabs as it works. Click to hold this tab."
@@ -415,11 +420,11 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
                   : "bg-[var(--ms-line-strong)]"
               }`}
             />
-            {following ? "Following" : "Held"}
+            {following ? "Following" : "Follow updates"}
           </button>
         </header>
 
-        <nav className="flex shrink-0 gap-0.5 border-b border-[var(--ms-line)] px-3" role="tablist">
+        <nav className="flex shrink-0 gap-0.5 border-b border-[var(--ms-line)] px-3" role="tablist" aria-label="Campaign artifacts">
           {ARTIFACT_TABS.map((t) => {
             const n = byTab[t.id].length;
             const on = tab === t.id;
@@ -427,7 +432,21 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
               <button
                 key={t.id}
                 role="tab"
+                id={`artifact-tab-${t.id}`}
+                aria-controls={`artifact-panel-${t.id}`}
                 aria-selected={on}
+                tabIndex={on ? 0 : -1}
+                onKeyDown={(event) => {
+                  const index = ARTIFACT_TABS.findIndex((item) => item.id === t.id);
+                  const next = event.key === "ArrowRight" ? (index + 1) % ARTIFACT_TABS.length
+                    : event.key === "ArrowLeft" ? (index - 1 + ARTIFACT_TABS.length) % ARTIFACT_TABS.length
+                    : event.key === "Home" ? 0 : event.key === "End" ? ARTIFACT_TABS.length - 1 : null;
+                  if (next === null) return;
+                  event.preventDefault();
+                  const nextTab = ARTIFACT_TABS[next].id;
+                  setTab(nextTab); setFollowing(false);
+                  document.getElementById(`artifact-tab-${nextTab}`)?.focus();
+                }}
                 onClick={() => {
                   setTab(t.id);
                   setFollowing(false);
@@ -458,7 +477,7 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
           })}
         </nav>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        <div id={`artifact-panel-${tab}`} role="tabpanel" aria-labelledby={`artifact-tab-${tab}`} tabIndex={0} className="min-h-0 min-w-0 flex-1 overflow-y-auto [overflow-wrap:anywhere] px-5 py-5">
           {cards.length ? (
             <div className="space-y-4">
               {cards.map((a) => (
@@ -499,22 +518,31 @@ export default function ThreadPage({ params }: { params: Promise<{ threadId: str
 // ---- one agent turn: envelope text only; content lives in the panel ---------
 function AgentTurn({ envelope }: { envelope: AgentMessage }) {
   if (!envelope.text) return null;
+  const reasons = [...new Set((envelope.artifacts ?? [])
+    .filter((artifact) => artifact.type === "escalation")
+    .map((artifact) => artifact.payload?.reason)
+    .filter((reason): reason is string => typeof reason === "string" && reason.trim().length > 0 && reason !== envelope.text))];
   return (
     <div>
-      <div className="mb-1.5 flex items-center gap-2">
+      <div className="mb-1.5 flex flex-wrap items-center gap-2">
         <span className="grid h-[17px] w-[17px] shrink-0 place-items-center rounded-full bg-[var(--ms-blue)]">
           <span className="h-[5px] w-[5px] rounded-full bg-white shadow-[4px_0_0_#fff]" />
         </span>
         <b className="text-[14px] font-semibold">Plotline</b>
         {envelope.artifacts?.length > 0 && (
-          <span className="rounded-[5px] bg-[var(--ms-blue-wash)] px-1.5 py-[1px] text-[11px] font-semibold text-[var(--ms-blue-text)]">
+          <span className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] rounded-[5px] bg-[var(--ms-blue-wash)] px-1.5 py-[1px] text-[11px] font-semibold text-[var(--ms-blue-text)]">
             {envelope.artifacts.length === 1
               ? envelope.artifacts[0].title
               : `${envelope.artifacts.length} cards`}
           </span>
         )}
       </div>
-      <p className="whitespace-pre-wrap text-[15px] leading-[24px]">{envelope.text}</p>
+      <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[15px] leading-[24px]">{envelope.text}</p>
+      {reasons.map((reason) => (
+        <p key={reason} className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-[10px] border border-[var(--ms-line)] bg-[var(--ms-elev)] px-3 py-2 text-[13px] leading-[20px]">
+          {reason}
+        </p>
+      ))}
     </div>
   );
 }

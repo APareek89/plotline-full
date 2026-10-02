@@ -30,6 +30,24 @@ def owner_media_limit() -> int:
         raise ValueError("Invalid media generation allowance")
     return int(value)
 
+def media_capacity() -> dict:
+    """Read-only lifetime headroom; reservations remain the atomic authority."""
+    actor = require_execution()
+    cap = owner_media_limit()
+    if fixture_mode():
+        return {"owner_limit": cap, "owner_used": 0, "owner_remaining": cap,
+                "shared_limit": 20, "shared_remaining": 20, "remaining": cap, "scope": "lifetime"}
+    if not active_session(actor):
+        raise PermissionError("Session expired")
+    with connection(owner_id=actor.owner_id) as conn:
+        used = conn.execute("SELECT count(*) AS n FROM usage WHERE owner_id=%s AND kind='media' AND status!='released'", (actor.owner_id,)).fetchone()["n"]
+        shared = conn.execute("SELECT media_calls FROM shared_budget WHERE id=1").fetchone()
+    if shared is None:
+        raise RuntimeError("Shared budget is unavailable")
+    left, shared_left = max(0, cap-used), max(0, 20-shared["media_calls"])
+    return {"owner_limit": cap, "owner_used": used, "owner_remaining": left,
+            "shared_limit": 20, "shared_remaining": shared_left, "remaining": min(left, shared_left), "scope": "lifetime"}
+
 def reserve(*, kind: str, provider: str, model: str, maximum_usd, metadata: dict | None = None) -> Reservation:
     actor = require_live_tools()
     maximum = money(maximum_usd)

@@ -1,0 +1,2418 @@
+{
+  "date": "2026-10-02",
+  "scope": "Plotline; free code/API/browser QA plus provider-free release operations; no paid model calls",
+  "base_commit": "3cec470",
+  "count": 115,
+  "categories": 12,
+  "scoring": "S/O/D use 1\u201310 expert ordinal estimates (not measured occurrence rates); high detection score means difficult to detect. RPN=S\u00d7O\u00d7D ranks pre-control review risk. A P0 risk scenario is not a claim of a P0 vulnerability. Status is evidence-specific, not production certification.",
+  "status_definitions": {
+    "mitigated": "observed operational failure relieved with recorded controls; permanent automation not claimed",
+    "fixed": "demonstrated issue changed locally with cited regression or factual metadata correction; deployment pending",
+    "passing": "cited automated contract passes locally under denied provider transport; not external model validation",
+    "checked": "source control inspected; scenario not independently exercised here",
+    "unverified": "requires real provider, scale, or destructive fault injection not authorized in this free review"
+  },
+  "cases": [
+    {
+      "id": "PL-FMEA-001",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "Malformed intake JSON leaves the user without a current clarification",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 3417,
+          "symbol": "test_intake_survives_a_turn_it_cannot_parse",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-002",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "Missing workspace dependencies reach a paid agent as empty objects",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 3271,
+          "symbol": "test_a_stage_refuses_to_run_without_the_state_it_depends_on",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-003",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "Caught stage exception is recorded as a successful background job",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_campaign_recovery.py",
+          "line": 6,
+          "symbol": "test_caught_stage_failure_is_persisted_failed_and_next_job_can_finish",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-004",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "Provider refusal is rendered as a successful structured answer",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_session_prompt_proxy.py",
+          "line": 81,
+          "symbol": "test_session_invalid_provider_proxy_never_yields_a_success",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-005",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "Generic failure hides actionable reason and loses safe diagnostic correlation",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 238,
+          "symbol": "test_safe_failure_diagnostics_are_correlated_and_do_not_persist_provider_body",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-006",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "Board envelope fails after successful planning and charges another identical planner call",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4806,
+          "symbol": "test_board_emission_failure_retries_only_matching_persisted_output",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-007",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "A canon sheet fails after its anchor and Retry pays for the anchor again",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 29,
+          "symbol": "test_partial_canon_retry_reuses_completed_anchor_after_restart",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-008",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "Sharper rendering fails after deleting the only reusable library row",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 144,
+          "symbol": "test_sharper_failure_keeps_old_library_and_board_bindings",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-009",
+      "category": "unhandled_error_paths",
+      "failure_scenario": "Unknown creative-stage question starts a paid reroll instead of clarifying",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4550,
+          "symbol": "test_visual_feedback_does_not_match_status_or_question_substrings",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-010",
+      "category": "external_dependency_failures",
+      "failure_scenario": "Accepted media job loses its poll response and gets submitted twice",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 12,
+          "symbol": "test_accepted_poll_failure_never_resubmits",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-011",
+      "category": "external_dependency_failures",
+      "failure_scenario": "Policy refusal falls through to another paid provider",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 22,
+          "symbol": "test_terminal_policy_no_fallback",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-012",
+      "category": "external_dependency_failures",
+      "failure_scenario": "Provider HTTP 500 is automatically replayed despite uncertain acceptance",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 43,
+          "symbol": "test_http500_and_transport_do_not_retry_or_release",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-013",
+      "category": "external_dependency_failures",
+      "failure_scenario": "Malformed provider job identifier forms an authenticated attacker-selected poll path",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 91,
+          "symbol": "test_malformed_job_id_never_forms_authenticated_poll",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-014",
+      "category": "external_dependency_failures",
+      "failure_scenario": "Provider-returned URL redirects a credential-bearing request",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 74,
+          "symbol": "test_fal_credentials_ignore_returned_urls",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-015",
+      "category": "external_dependency_failures",
+      "failure_scenario": "PixelBin reference JSON loses singleton or multiple image URL arrays",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 43,
+          "symbol": "test_pixelbin_url_reference_json_matches_published_python_sdk",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-016",
+      "category": "external_dependency_failures",
+      "failure_scenario": "Reference validation rejection triggers hidden alternate-encoding submission",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 63,
+          "symbol": "test_reference_rejection_never_retries_with_another_encoding",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-017",
+      "category": "external_dependency_failures",
+      "failure_scenario": "S3 cold hydration returns bytes from a different version or hash",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_storage.py",
+          "line": 17,
+          "symbol": "test_version_hash_and_cold_hydrate",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-018",
+      "category": "external_dependency_failures",
+      "failure_scenario": "A paid render download fails and the successful provider receipt disappears",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 4,
+      "rpn": 128,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 3326,
+          "symbol": "test_a_paid_render_whose_download_fails_is_still_recorded",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-019",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Two owners share connection identity under concurrent requests",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 75,
+          "symbol": "test_concurrent_scopes_never_reuse_connection_identity",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-020",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Session is revoked between reserve and dispatch but request still leaves",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 88,
+          "symbol": "test_usage_revocation_before_dispatch_releases_capacity",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-021",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Background worker loses captured actor or leaves active-job capacity occupied",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 282,
+          "symbol": "test_background_jobs_preserve_actors_and_release_setup_failure",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-022",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Restart after brief restores its projection but loses actual board",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 3304,
+          "symbol": "test_the_board_survives_a_restart_not_just_its_projection",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-023",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Earlier option approvals reactivate after business identity revision",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4499,
+          "symbol": "test_brand_revision_preserves_paid_history_and_invalidates_old_approvals",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-024",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "New rumination inherits paid checkpoints belonging to older inputs",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2582,
+          "symbol": "test_a_new_rumination_clears_stale_checkpoints",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-025",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Cleared QC survives a replacement image by slot name alone",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4840,
+          "symbol": "test_rehydrated_qc_does_not_accept_replaced_asset",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-026",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Canon question re-emits old stage actions after workflow advances",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_canon_review_contract.py",
+          "line": 92,
+          "symbol": "test_clarification_cannot_reactivate_a_previous_canon_gate",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-027",
+      "category": "race_conditions_and_state",
+      "failure_scenario": "Partial keyframe success is lost across process restart",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 6,
+      "rpn": 192,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 128,
+          "symbol": "test_keyframe_partial_retry_only_renders_missing_shot_and_invalidates_changed_input",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-028",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Three two-render canon kinds consume default allowance before two keyframes",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 74,
+          "symbol": "test_multi_reference_board_preflights_all_remaining_work_without_dispatch",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-029",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Configured owner media allowance differs from the hard-coded usage API value",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 367,
+          "symbol": "test_media_headroom_is_lifetime_count_and_readonly",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-030",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Invalid override grants unlimited media operations",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 148,
+          "symbol": "test_invalid_media_limit_rejects_before_reservation",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-031",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Prompt bytes exceed provider input admission bound",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 66,
+          "symbol": "test_bound_blocks_before_dispatch",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-032",
+      "category": "resource_exhaustion",
+      "failure_scenario": "A legitimate vision payload is charged or rejected using the text-only byte cap",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 119,
+          "symbol": "test_actual_sdk_large_image_separate_from_text_bound",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-033",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Slow trickle response keeps a provider request alive indefinitely",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 138,
+          "symbol": "test_slow_trickle_transport_hits_wall_deadline_once_and_keeps_uncertain",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-034",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Oversized owner state overwrites existing durable data before capacity failure",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 315,
+          "symbol": "test_quota_rejects_oversized_state_without_replacing_saved_data",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-035",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Seat configuration fans out unbounded reviewers",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1649,
+          "symbol": "test_the_seat_cap_holds_and_an_unknown_seat_is_refused",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-036",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Same-input partial results are counted as new required operations and falsely block affordable completion",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 5,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 215,
+          "symbol": "test_capacity_discounts_same_input_anchor_and_keyframe_checkpoints",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-037",
+      "category": "security_access_control",
+      "failure_scenario": "Foreign owner reads or overwrites a campaign checkpoint",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 48,
+          "symbol": "test_pg_forced_owner_rows_foreign_upserts_and_missing_actor",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-038",
+      "category": "security_access_control",
+      "failure_scenario": "Foreign owner changes another reservation after provider completion",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 104,
+          "symbol": "test_usage_preserves_settlement_and_foreign_owner_cannot_change_it",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-039",
+      "category": "security_access_control",
+      "failure_scenario": "Private asset path follows symlink outside owner directory",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 225,
+          "symbol": "test_private_files_reject_symlinks_and_foreign_owner",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-040",
+      "category": "security_access_control",
+      "failure_scenario": "Foreign owner triggers an S3 fetch before ownership rejection",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_storage.py",
+          "line": 24,
+          "symbol": "test_foreign_owner_denied_before_s3",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-041",
+      "category": "security_access_control",
+      "failure_scenario": "Signed bridge request body or path is replayed or altered",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 261,
+          "symbol": "test_signed_bridge_binds_body_path_nonce_and_revocable_session",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-042",
+      "category": "security_access_control",
+      "failure_scenario": "Cached example scope signs a paid-provider private reference URL",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_storage.py",
+          "line": 36,
+          "symbol": "test_cached_signing_denied_and_ttl",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-043",
+      "category": "security_access_control",
+      "failure_scenario": "Changed bytes under the recorded object version pass hash readback",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_storage.py",
+          "line": 31,
+          "symbol": "test_tampered_version_readback_rejected",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-044",
+      "category": "security_access_control",
+      "failure_scenario": "Signed reference omits owner/version/expiry binding",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_storage.py",
+          "line": 51,
+          "symbol": "test_reference_scope_requires_current_owner_version_signature_and_short_ttl",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-045",
+      "category": "security_access_control",
+      "failure_scenario": "Database URL parameters disable Python verified TLS",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 10,
+      "occurrence": 3,
+      "detection": 7,
+      "rpn": 210,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 203,
+          "symbol": "test_python_database_url_cannot_override_verified_tls",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-046",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Successful canon plan is discarded before its first failed media step",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 106,
+          "symbol": "test_canon_plan_checkpoint_retry_keeps_ids_and_does_not_pay_planner_twice",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-047",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "New product reuses a human canon slug and overwrites the previous product row",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4587,
+          "symbol": "test_different_product_canon_preserves_library_and_restart_bindings",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-048",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Environment correction partially succeeds and replaces current binding early",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4636,
+          "symbol": "test_targeted_environment_edit_preserves_history_and_restart_binding",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-049",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Intake forgets an uploaded product photo on later user messages",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1301,
+          "symbol": "test_an_attached_image_survives_until_there_is_a_product_to_put_it_on",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-050",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Campaign deletion destroys reusable canon or paid asset history",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 192,
+          "symbol": "test_canon_names_are_owner_scoped_and_assets_survive_campaign_delete",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-051",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Incomplete planner result is restored as a completed checkpoint",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2560,
+          "symbol": "test_only_a_complete_result_is_ever_restored",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-052",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Renamed board after intake reset loses access to same-thread paid references",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 184,
+          "symbol": "test_historical_paid_canon_recoverable_after_intake_reset_and_renamed_board",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-053",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Explicit saved-reference choice silently restores old approval",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 157,
+          "symbol": "test_saved_reference_rebinding_is_explicit_and_survives_reload",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-054",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Duplicate or cross-kind canon IDs satisfy set comparison while binding the wrong references",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 173,
+          "symbol": "test_canon_plan_rejects_duplicate_ids_and_reference_kind_confusion",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-055",
+      "category": "observability_gaps",
+      "failure_scenario": "Current provider mapping differs from model confirmation shown to user",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 122,
+          "symbol": "test_planned_model_uses_actual_primary_mapping",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-056",
+      "category": "observability_gaps",
+      "failure_scenario": "Raw signed reference URLs leak into persisted parameters or logs",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 98,
+          "symbol": "test_pixelbin_params_and_logs_do_not_retain_signed_references",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-057",
+      "category": "observability_gaps",
+      "failure_scenario": "PixelBin rejection category disappears when the container restarts",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 162,
+          "symbol": "test_pixelbin_rejection_survives_in_owner_activity_without_sensitive_body",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-058",
+      "category": "observability_gaps",
+      "failure_scenario": "Provider rejection diagnostics include secret-bearing raw error messages",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 154,
+          "symbol": "test_http_rejection_persists_only_safe_protocol_metadata",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-059",
+      "category": "observability_gaps",
+      "failure_scenario": "Unwired visual detectors are reported as passing",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2451,
+          "symbol": "test_an_unwired_detector_reports_skip_and_never_pass",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-060",
+      "category": "observability_gaps",
+      "failure_scenario": "Options headline promises evidence when no sources exist",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4790,
+          "symbol": "test_options_headline_matches_actual_attached_sources",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-061",
+      "category": "observability_gaps",
+      "failure_scenario": "Render reports requested references instead of the subset actually sent",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 3552,
+          "symbol": "test_a_render_sends_the_references_the_model_declares_and_names_the_rest",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-062",
+      "category": "observability_gaps",
+      "failure_scenario": "Shot validator claims it automatically split a clip without changing rows",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2111,
+          "symbol": "test_b1_reports_two_action_beat_without_claiming_an_unperformed_split",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-063",
+      "category": "observability_gaps",
+      "failure_scenario": "Request progress text displays work from another thread",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 216,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1679,
+          "symbol": "test_progress_labels_follow_the_thread_that_is_running",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-064",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "A sequential request exceeding the owner budget mutates usage before rejection",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 248,
+          "symbol": "test_pre_dispatch_caps_reject_without_mutating_usage",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-065",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "A single provider HTTP 503 is not retained as uncertain usage",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 86,
+          "symbol": "test_5xx_remains_uncertain",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-066",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "Compressed provider response expands beyond bounded parser memory",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_media_dispatch.py",
+          "line": 106,
+          "symbol": "test_provider_compression_rejected_before_decode_retains_uncertain",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-067",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "Provider redirects exhaust background sockets",
+      "classification": "risk_scenario",
+      "status": "checked",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/safe_network.py",
+          "kind": "static inspection"
+        }
+      ],
+      "recommended_action": "Code path inspected; retain the stated control and add targeted runtime evidence when that risk is in scope."
+    },
+    {
+      "id": "PL-FMEA-068",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "More than 4000 active workspaces exhaust process memory",
+      "classification": "risk_scenario",
+      "status": "checked",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/campaign.py",
+          "kind": "static inspection"
+        }
+      ],
+      "recommended_action": "Code path inspected; retain the stated control and add targeted runtime evidence when that risk is in scope."
+    },
+    {
+      "id": "PL-FMEA-069",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "Many owners saturate real S3 or database throughput",
+      "classification": "risk_scenario",
+      "status": "unverified",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/database.py",
+          "kind": "not executed at production scale/provider"
+        }
+      ],
+      "recommended_action": "Run only after explicit approval with a bounded acceptance plan; no paid or load claim is made here."
+    },
+    {
+      "id": "PL-FMEA-070",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "Uploaded decompression-bomb image exhausts worker memory",
+      "classification": "risk_scenario",
+      "status": "checked",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/campaign.py",
+          "kind": "static inspection"
+        }
+      ],
+      "recommended_action": "Code path inspected; retain the stated control and add targeted runtime evidence when that risk is in scope."
+    },
+    {
+      "id": "PL-FMEA-071",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "Concurrent requests race quota preflight snapshot",
+      "classification": "risk_scenario",
+      "status": "checked",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/usage.py",
+          "kind": "static inspection"
+        }
+      ],
+      "recommended_action": "Code path inspected; retain the stated control and add targeted runtime evidence when that risk is in scope."
+    },
+    {
+      "id": "PL-FMEA-072",
+      "category": "scale_and_load_failures",
+      "failure_scenario": "Long model tool chains exceed configured turn or overall time budget",
+      "classification": "risk_scenario",
+      "status": "checked",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 7,
+      "rpn": 224,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/agents/providers.py",
+          "kind": "static inspection"
+        }
+      ],
+      "recommended_action": "Code path inspected; retain the stated control and add targeted runtime evidence when that risk is in scope."
+    },
+    {
+      "id": "PL-FMEA-073",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Unknown PixelBin dollar conversion is displayed as known zero-cost usage",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 120,
+          "symbol": "test_media_operation_limit_is_separate_from_unknown_usd",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-074",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Known usage is lost when response is truncated",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 61,
+          "symbol": "test_usage_settled_before_incomplete_output",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-075",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Known policy refusal usage is released instead of retained",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 132,
+          "symbol": "test_policy_refusal_settles_usage_and_stops",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-076",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Explicit HTTP rejection is charged as an unknown accepted request",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 54,
+          "symbol": "test_rejection_zero_settlement_and_no_retry",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-077",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Web-search usage is not counted or budgeted",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 95,
+          "symbol": "test_actual_searches_recorded_and_priced",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-078",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Model-confirm price is an unsupported user-supplied number",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2175,
+          "symbol": "test_the_board_never_invents_a_model_id_or_a_price",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-079",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Creative variants charge reused body scenes again",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2877,
+          "symbol": "test_the_variant_matrix_shows_what_was_reused_not_re_rendered",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-080",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Shared lifetime media pool is exhausted even when an owner has room",
+      "classification": "risk_scenario",
+      "status": "checked",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/usage.py",
+          "kind": "static inspection"
+        }
+      ],
+      "recommended_action": "Code path inspected; retain the stated control and add targeted runtime evidence when that risk is in scope."
+    },
+    {
+      "id": "PL-FMEA-081",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Production billing total differs from proxy-fixture counts or estimates",
+      "classification": "risk_scenario",
+      "status": "unverified",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/usage.py",
+          "kind": "not executed at production scale/provider"
+        }
+      ],
+      "recommended_action": "Run only after explicit approval with a bounded acceptance plan; no paid or load claim is made here."
+    },
+    {
+      "id": "PL-FMEA-082",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "Unknown network completion is automatically submitted again",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1704,
+          "symbol": "test_a_dropped_connection_preserves_log_without_duplicate_paid_dispatch",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-083",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "Known API status rejection is treated as a retriable transport blip",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1722,
+          "symbol": "test_an_api_status_error_is_not_retried_as_a_blip",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-084",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "Paid rumination stage is repeated after a later stage failure",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2502,
+          "symbol": "test_a_completed_stage_is_never_paid_for_twice",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-085",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "Explicit failure recovery disappears after workspace restart",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 328,
+          "symbol": "test_cached_failed_job_recovers_explicitly_after_workspace_restart",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-086",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "Second refinement silently repeats the same bounded paid council pass",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1142,
+          "symbol": "test_refine_cannot_run_twice_even_if_options_stay_flagged",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-087",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "Repair retry repeats the same unsuccessful variable change",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2859,
+          "symbol": "test_two_retries_cannot_change_the_same_variable",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-088",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "SDK tool continuation serializes unsupported response aliases",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 79,
+          "symbol": "test_function_roundtrip_uses_same_graph_tools",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-089",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "A missing checkpoint reuses a legacy anchor from a different configured model",
+      "classification": "risk_scenario",
+      "status": "checked",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/campaign.py",
+          "kind": "static inspection"
+        }
+      ],
+      "recommended_action": "Code path inspected; retain the stated control and add targeted runtime evidence when that risk is in scope."
+    },
+    {
+      "id": "PL-FMEA-090",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "Process dies after provider success but before local asset checkpoint commit",
+      "classification": "risk_scenario",
+      "status": "unverified",
+      "severity": 9,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 270,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/app/campaign.py",
+          "kind": "not executed at production scale/provider"
+        }
+      ],
+      "recommended_action": "Run only after explicit approval with a bounded acceptance plan; no paid or load claim is made here."
+    },
+    {
+      "id": "PL-FMEA-091",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Local preview flag permits canonical provider credentials or public origin",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_portfolio.py",
+          "line": 239,
+          "symbol": "test_loopback_preview_never_accepts_public_or_live_configuration",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-092",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Real mode silently uses fixture fallback when credentials are absent",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1084,
+          "symbol": "test_real_mode_without_a_key_is_refused_up_front_not_discovered_mid_run",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-093",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Cached execution reaches a live SDK despite fixture provenance",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_hosted_provider_adapters.py",
+          "line": 72,
+          "symbol": "test_cached_scope_blocks_live_sdk",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-094",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Review policy skips paid approval gates",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1764,
+          "symbol": "test_a_cost_gate_cannot_be_configured_away",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-095",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Review policy skips mandatory keyframe or QC checks",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 1776,
+          "symbol": "test_qc_and_keyframes_can_never_be_skipped",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-096",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Provider model configuration omits reference capability limits",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 3659,
+          "symbol": "test_every_model_route_declares_a_reference_budget",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-097",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "New language-model stage lacks a configured model slot",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 3253,
+          "symbol": "test_every_llm_stage_has_a_model_slot",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-098",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Database URL ssl=no-verify overrides Node explicit CA configuration",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "web/tests/database-tls.test.mjs",
+          "kind": "installed-pg offline initialization regression"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-099",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Review metadata still describes local SQLite and no auth or billing",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 4,
+      "detection": 5,
+      "rpn": 160,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/.power-coding/config.json",
+          "kind": "static inspection"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-100",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "Single still with a person is rejected by video screen-time rules",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 23,
+          "symbol": "test_single_still_with_person_does_not_require_video_screen_time",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-101",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "A user-requested two-image carousel is silently collapsed",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_session_prompt_proxy.py",
+          "line": 70,
+          "symbol": "test_session_board_actual_runner_preserves_requested_still_count",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-102",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "Photo and one-line prompt trigger invented business defaults after Retry",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4741,
+          "symbol": "test_photo_retry_never_delegates_missing_campaign_choices",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-103",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "Fragmented intake forces form fields instead of asking in chat",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_session_prompt_proxy.py",
+          "line": 21,
+          "symbol": "test_session_intake_single_person_product_full_driver_to_delivery",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-104",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "Brand-name correction changes unrelated supplied facts or paid history",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 4499,
+          "symbol": "test_brand_revision_preserves_paid_history_and_invalidates_old_approvals",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-105",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "Real identifiable person renders before rights verification",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 49,
+          "symbol": "test_canon_unverified_person_is_refused_before_any_render",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Validate in the final guarded suite and keep the regression; deployment is pending."
+    },
+    {
+      "id": "PL-FMEA-106",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "A confirmed claim is replaced by a model-invented performance benefit",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 380,
+          "symbol": "test_unmapped_claim_never_reaches_the_campaign_detail",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-107",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "Direct deliver action bypasses blocking QC findings",
+      "classification": "risk_scenario",
+      "status": "passing",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_marketing.py",
+          "line": 2766,
+          "symbol": "test_qc_delivery_cannot_be_bypassed_by_text_direct_event_or_recovery",
+          "kind": "guarded test"
+        }
+      ],
+      "recommended_action": "Retain this automated contract; a pass proves the exercised fixture boundary, not live provider behavior."
+    },
+    {
+      "id": "PL-FMEA-108",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "Paid visual output fails to preserve product markings or removes requested objects",
+      "classification": "risk_scenario",
+      "status": "unverified",
+      "severity": 7,
+      "occurrence": 5,
+      "detection": 5,
+      "rpn": 175,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/app/campaign.py",
+          "kind": "not executed at production scale/provider"
+        }
+      ],
+      "recommended_action": "Run only after explicit approval with a bounded acceptance plan; no paid or load claim is made here."
+    },
+    {
+      "id": "PL-FMEA-109",
+      "category": "resource_exhaustion",
+      "failure_scenario": "Shared AWS Docker build volume fills up and prevents a release image from being created",
+      "classification": "demonstrated_issue",
+      "status": "mitigated",
+      "severity": 6,
+      "occurrence": 6,
+      "detection": 4,
+      "rpn": 144,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "docs/qa/2026-10-02/release-build-storage.json",
+          "kind": "observed remote build failure and targeted cleanup receipts"
+        }
+      ],
+      "recommended_action": "Targeted removal of stopped failed builders and unreferenced untagged build images restored over 4 GB available while retaining running containers and production rollback images. Check build space before future builds; scheduled cleanup is not implemented."
+    },
+    {
+      "id": "PL-FMEA-110",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Still keyframe uses brief first ratio while delivery uses another placement and relabels saved pixels",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 6,
+      "detection": 7,
+      "rpn": 336,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_ratio_output.py",
+          "line": 29,
+          "symbol": "test_still_keyframe_uses_delivery_ratio_and_same_png_is_reused",
+          "kind": "guarded actual-driver PNG or SVG contract"
+        }
+      ],
+      "recommended_action": "Retain the regression, deploy the correction after root review, and verify any new paid image separately; proxy pixels are not provider validation."
+    },
+    {
+      "id": "PL-FMEA-111",
+      "category": "billing_credit_mismatches",
+      "failure_scenario": "Multiple placement ratios or stale-frame fallback require extra image calls omitted from remaining capacity",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 5,
+      "detection": 6,
+      "rpn": 240,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_ratio_output.py",
+          "line": 63,
+          "symbol": "test_multi_placement_still_counts_and_renders_each_distinct_ratio_once",
+          "kind": "guarded actual-driver PNG or SVG contract"
+        }
+      ],
+      "recommended_action": "Retain the regression, deploy the correction after root review, and verify any new paid image separately; proxy pixels are not provider validation."
+    },
+    {
+      "id": "PL-FMEA-112",
+      "category": "data_integrity_partial_writes",
+      "failure_scenario": "Wrong or undecodable pixels with correct ratio metadata pass approval, reuse and delivery QC",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 8,
+      "occurrence": 5,
+      "detection": 8,
+      "rpn": 320,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_ratio_output.py",
+          "line": 81,
+          "symbol": "test_wrong_pixels_with_correct_metadata_never_pass_reuse_approval_or_qc",
+          "kind": "guarded actual-driver PNG or SVG contract"
+        }
+      ],
+      "recommended_action": "Retain the regression, deploy the correction after root review, and verify any new paid image separately; proxy pixels are not provider validation."
+    },
+    {
+      "id": "PL-FMEA-113",
+      "category": "config_feature_flag_drift",
+      "failure_scenario": "Mock image defaults to portrait dimensions for a declared 4:5 output and conceals ratio defects",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 5,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 180,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "api/tests/test_ratio_output.py",
+          "line": 76,
+          "symbol": "test_mock_feed_image_has_declared_four_by_five_dimensions",
+          "kind": "guarded actual-driver PNG or SVG contract"
+        }
+      ],
+      "recommended_action": "Retain the regression, deploy the correction after root review, and verify any new paid image separately; proxy pixels are not provider validation."
+    },
+    {
+      "id": "PL-FMEA-114",
+      "category": "edge_cases_from_prd",
+      "failure_scenario": "A 701px tablet retains split panes, cramping the conversation composer and sign-out controls",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 5,
+      "occurrence": 7,
+      "detection": 3,
+      "rpn": 105,
+      "priority": "P1",
+      "evidence": [
+        {
+          "path": "docs/qa/2026-10-02/browser-qa.json",
+          "kind": "root browser tablet_followup dimensions at701px"
+        },
+        {
+          "path": "docs/qa/2026-10-02/screenshots/plotline-tablet-before.png",
+          "kind": "observed cramped tablet layout"
+        },
+        {
+          "path": "docs/qa/2026-10-02/screenshots/plotline-tablet-after.png",
+          "kind": "stacked layout without document overflow"
+        }
+      ],
+      "recommended_action": "Retain the960px stacking boundary and nonwrapping sign-out control; final web deployment is root-owned."
+    },
+    {
+      "id": "PL-FMEA-115",
+      "category": "retry_idempotency_issues",
+      "failure_scenario": "A failed-job recovery banner hides newer saved-reference or smaller-plan choices and leaves only generic Retry",
+      "classification": "demonstrated_issue",
+      "status": "fixed",
+      "severity": 7,
+      "occurrence": 6,
+      "detection": 6,
+      "rpn": 252,
+      "priority": "P0",
+      "evidence": [
+        {
+          "path": "api/tests/test_fmea_flow.py",
+          "line": 277,
+          "symbol": "test_failed_job_recovery_coexists_with_current_saved_reference_question",
+          "kind": "actual stored failed job and GET response; explicit saved-reference action and restart"
+        },
+        {
+          "path": "web/app/studio/thread/[threadId]/page.tsx",
+          "kind": "current non-Retry action choices take precedence over the generic recovery banner"
+        },
+        {
+          "path": "docs/qa/2026-10-02/recovery-priority.json",
+          "kind": "isolated synthetic failed-job fixture and root browser acceptance"
+        }
+      ],
+      "recommended_action": "Show current non-Retry recovery choices while retaining the failed job and historical usage; keep the generic Retry banner for legacy Retry-only or free-text asks. No provider dispatch is needed to review saved references."
+    }
+  ]
+}

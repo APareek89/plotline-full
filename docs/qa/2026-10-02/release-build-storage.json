@@ -1,0 +1,113 @@
+{
+  "plotline-web-build-failure.json": {
+    "status": "read_only_build_diagnostic",
+    "at": "2026-10-02T07:13:12.946591+00:00",
+    "archive_sha256": "9f2464c6bf42b4c507e5ff25f7cbb54b10b34ceb2cbdc132ea36f75021674f1b",
+    "receipt_directory": "/srv/portfolio/receipts/plotline/20261002T071023Z",
+    "build_log_sha256": "983f4ce4b218afc0240cae9a8c12370057ea455a0223abfa43c70b12755131ec",
+    "build_log_bytes": 2842,
+    "line_count": 76,
+    "error_windows": [
+      {
+        "line": 74,
+        "text": "\u0192  (Dynamic)  server-rendered on demand"
+      },
+      {
+        "line": 75,
+        "text": ""
+      },
+      {
+        "line": 76,
+        "text": "open /app/.next/standalone/node_modules/next/dist/compiled/edge-runtime/package.json: no space left on device"
+      }
+    ]
+  },
+  "plotline-web-build-storage.json": {
+    "status": "read_only_storage_diagnostic",
+    "at": "2026-10-02T07:13:38.994806+00:00",
+    "filesystems": {
+      "/": {
+        "total_bytes": 42869960704,
+        "free_bytes": 138485760,
+        "available_bytes": 138485760,
+        "total_inodes": 1639888,
+        "free_inodes": 270619,
+        "available_inodes": 270619
+      },
+      "/var/lib/docker": {
+        "total_bytes": 42869960704,
+        "free_bytes": 138485760,
+        "available_bytes": 138485760,
+        "total_inodes": 1639888,
+        "free_inodes": 270619,
+        "available_inodes": 270619
+      },
+      "/srv/portfolio": {
+        "total_bytes": 20957446144,
+        "free_bytes": 20070678528,
+        "available_bytes": 18980159488,
+        "total_inodes": 1310720,
+        "free_inodes": 1304046,
+        "available_inodes": 1304046
+      }
+    },
+    "docker_usage": [
+      {
+        "Active": "16",
+        "Reclaimable": "29.74GB (98%)",
+        "Size": "30.3GB",
+        "TotalCount": "74",
+        "Type": "Images"
+      },
+      {
+        "Active": "14",
+        "Reclaimable": "1.423GB (99%)",
+        "Size": "1.424GB",
+        "TotalCount": "16",
+        "Type": "Containers"
+      },
+      {
+        "Active": "0",
+        "Reclaimable": "0B",
+        "Size": "0B",
+        "TotalCount": "0",
+        "Type": "Local Volumes"
+      },
+      {
+        "Active": "0",
+        "Reclaimable": "55.23MB",
+        "Size": "55.23MB",
+        "TotalCount": "4",
+        "Type": "Build Cache"
+      }
+    ],
+    "docker_df_ok": true,
+    "mutations": 0
+  },
+  "targeted-build-cleanup.json": {
+    "status": "targeted_disposable_build_cleanup",
+    "at": "2026-10-02T07:17:50.770743+00:00",
+    "removed_stopped_builders": [
+      "876ea0dcf5bb542bd776e908af912a543bdb3fe95ed6d03142fe1cb94a36f1d0",
+      "12c88a56c6247c21234662efa35d3f0520715f3020c8efd9f472400f58d9eb31"
+    ],
+    "removed_never_deployed_candidate": "sha256:316036e6eda564736ffb7f48a14aecd5161779a372f8a2bc625aec15d8323311",
+    "bytes_available_before": 138100736,
+    "bytes_available_after": 1225318400,
+    "running_containers_identical": true,
+    "data_or_volumes_removed": false,
+    "provider_calls": 0
+  },
+  "exact-builder-cleanup.json": {
+    "status": "exact_unused_builder_images_removed",
+    "at": "2026-10-02T07:18:54.634571+00:00",
+    "images": [
+      "sha256:5e4e9ddb599508ba187892cbd9f0634428645c69fd4bbe3a7735880fe8e2aa49",
+      "sha256:e5d76fb165744b48f969c2c2adb25f8b07d9033e9b9fd34d2cf5523b7bf2c50b"
+    ],
+    "bytes_available_before": 1225318400,
+    "bytes_available_after": 4358807552,
+    "running_containers_identical": true,
+    "tagged_images_or_data_removed": false
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "completed_at": "2026-10-02T07:46:03.358948+00:00",
+  "status": "deployed_free_qa_complete_paid_acceptance_pending",
+  "api": {
+    "build": {
+      "status": "built_not_deployed",
+      "app": "plotline-api",
+      "image": "portfolio/plotline-api:626f068e547f5466",
+      "image_id": "sha256:a843bc7c97a0cbf668b243289e0fb82b57228163779aa34e6d472e16039de6e4",
+      "source_sha256": "626f068e547f5466a47d29059234b25bb89c662c8f221564bf1d8dfea1fd8079",
+      "current_config_preserved": true,
+      "other_apps_unchanged": true,
+      "provider_calls": 0,
+      "generated_at": "2026-10-02T07:33:31.469880+00:00"
+    },
+    "smoke": {
+      "status": "passed",
+      "app": "plotline-api",
+      "image": "portfolio/plotline-api:626f068e547f5466",
+      "image_id": "sha256:a843bc7c97a0cbf668b243289e0fb82b57228163779aa34e6d472e16039de6e4",
+      "source_sha256": "626f068e547f5466a47d29059234b25bb89c662c8f221564bf1d8dfea1fd8079",
+      "probe": {
+        "status": "passed",
+        "uid": 1000,
+        "readonly_root": true,
+        "owned_tmpfs_writable": true,
+        "migration_readable": true,
+        "ffmpeg": true,
+        "sample_records": 48,
+        "mock_svg_escaped": true,
+        "zip_asset_bytes_match": true,
+        "api_fixture_health": 200,
+        "auth_database_proven": false,
+        "mode": "explicit_local_fixture",
+        "provider_calls": 0,
+        "network": "none",
+        "vision_upload": {
+          "pillow_version": "12.3.0",
+          "png_decoded": true,
+          "resized": [
+            1024,
+            512
+          ],
+          "jpeg_verified": true,
+          "actual_upload_images_nonmock": true,
+          "provider_attempts": 0
+        }
+      },
+      "probe_sha256": "656291c6864f79776ed34aea903e98fed572d605a7fea361d6487b6e67556f13",
+      "provider_calls": 0,
+      "generated_at": "2026-10-02T07:34:15.968523+00:00"
+    },
+    "activation": {
+      "status": "image_only_update_verified",
+      "app": "plotline-api",
+      "image": "sha256:a843bc7c97a0cbf668b243289e0fb82b57228163779aa34e6d472e16039de6e4",
+      "image_id": "sha256:a843bc7c97a0cbf668b243289e0fb82b57228163779aa34e6d472e16039de6e4",
+      "previous_image_id": "sha256:6022ea7548a538df3f084af84d6855b8f1bcae206b915b7b2155bd828414fb68",
+      "config_before_sha256": "618189fbc3f866aaaeed24cb241af849240841723d67033b3cfe31fb5e24f8d8",
+      "config_after_sha256": "80f12318ecc69b13e9a0112f2cf3a26299a248a33456ceb3ef9097fb9ee93632",
+      "environment_sha256": "633f1c32d46f859b5241664df111e8dad78ed306f073f6580971c6f6a4b93831",
+      "source_sha256": "626f068e547f5466a47d29059234b25bb89c662c8f221564bf1d8dfea1fd8079",
+      "config_preserved_except_image": true,
+      "environment_identical": true,
+      "mounts_identical": true,
+      "bounds_identical": true,
+      "other_apps_unchanged": true,
+      "auth": true,
+      "mock": false,
+      "provider_calls": 0,
+      "generated_at": "2026-10-02T07:35:56.685230+00:00"
+    }
+  },
+  "web": {
+    "build": {
+      "status": "built_not_deployed",
+      "app": "plotline",
+      "image": "portfolio/plotline:b92d72cb0a64a9e1",
+      "image_id": "sha256:577ebba4da11a2aa7fe41114c5d6f609cf42c494d01d997f205436abdeb64138",
+      "source_sha256": "b92d72cb0a64a9e1e2f293c682e0c939e4f9969ab8f360f3d404788fff08b4c7",
+      "current_config_preserved": true,
+      "other_apps_unchanged": true,
+      "provider_calls": 0,
+      "generated_at": "2026-10-02T07:36:51.349858+00:00"
+    },
+    "smoke": {
+      "status": "passed",
+      "app": "plotline",
+      "image": "portfolio/plotline:b92d72cb0a64a9e1",
+      "image_id": "sha256:577ebba4da11a2aa7fe41114c5d6f609cf42c494d01d997f205436abdeb64138",
+      "source_sha256": "b92d72cb0a64a9e1e2f293c682e0c939e4f9969ab8f360f3d404788fff08b4c7",
+      "probe": {
+        "status": "passed",
+        "uid": 1000,
+        "readonly_root": true,
+        "tmp_writable": true,
+        "auth_and_bff_compiled": true,
+        "local_fonts": true,
+        "standalone_page": 200,
+        "unconfigured_health": 503,
+        "provider_calls": 0,
+        "auth_database_proven": false,
+        "network": "none"
+      },
+      "probe_sha256": "73fd22511e15771fb2cb68f308935c54fc07567a23e0b09006dbb2efb1091be4",
+      "provider_calls": 0,
+      "generated_at": "2026-10-02T07:37:05.983989+00:00"
+    },
+    "activation": {
+      "status": "image_only_update_verified",
+      "app": "plotline",
+      "image": "sha256:577ebba4da11a2aa7fe41114c5d6f609cf42c494d01d997f205436abdeb64138",
+      "image_id": "sha256:577ebba4da11a2aa7fe41114c5d6f609cf42c494d01d997f205436abdeb64138",
+      "previous_image_id": "sha256:bb5f88b197ab150e6a14a39bab664f7969235435bdf9e3ebb369d06657e27e04",
+      "config_before_sha256": "94aa1515f8530566e126bbb8a30879872c8ed3b5b55f56d05bca2e1c4167b837",
+      "config_after_sha256": "e90668a4afd94e7bfb863a8737c35d65d0eb99038d4033c38a4bcee6d9fef8ac",
+      "environment_sha256": "e06fd31781cd6031936e3a42e7624e3994042454736875b61befabc3b2f53f08",
+      "source_sha256": "b92d72cb0a64a9e1e2f293c682e0c939e4f9969ab8f360f3d404788fff08b4c7",
+      "config_preserved_except_image": true,
+      "environment_identical": true,
+      "mounts_identical": true,
+      "bounds_identical": true,
+      "other_apps_unchanged": true,
+      "auth": true,
+      "mock": false,
+      "provider_calls": 0,
+      "generated_at": "2026-10-02T07:44:25.715657+00:00"
+    }
+  },
+  "comparison": {
+    "checks": {
+      "plotline_usage_by_owner_unchanged": true,
+      "plotline_shared_budget_unchanged": true,
+      "plotline_limits_unchanged": true,
+      "arena_usage_rows_unchanged": true,
+      "all_target_containers_healthy": true,
+      "database_ca_verified": true,
+      "affected_saved_asset_metadata_unchanged": true
+    },
+    "plotline_owner_limit": 6,
+    "plotline_shared_used": 18,
+    "arena_usage_rows": 25,
+    "provider_calls_in_this_review": 0,
+    "runtime_images": {
+      "plotline-api": "sha256:a843bc7c97a0cbf668b243289e0fb82b57228163779aa34e6d472e16039de6e4",
+      "plotline": "sha256:577ebba4da11a2aa7fe41114c5d6f609cf42c494d01d997f205436abdeb64138",
+      "model-arena": "sha256:d70842ed056eddc32332f2f94799387aad76acbed6907897af56f32b1e95fc90"
+    },
+    "before": "release-before.json",
+    "after": "final-release-after.json"
+  },
+  "connection_interruption": {
+    "claim_absent_before_retry": true,
+    "old_runtime_healthy": true,
+    "resolution": "After connectivity recovered, read exact receipt/container state before resubmitting the unstarted activation."
+  },
+  "browser": "Normal authentication; prepared live sample with zero provider calls; 701px width/layout verified. Actual paid continuation remains untested.",
+  "provider_calls": 0
+}

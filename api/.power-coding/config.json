@@ -51,14 +51,14 @@
         "prd_path": "docs/PRD-v1.txt",
         "architecture_doc": "docs/mermaid/",
         "known_incidents": "Learning.MD",
-        "infra_constraints": "Phase-1 dev: local-only (SQLite, dev RAG stub); no AWS in this lane; free tier only"
+        "infra_constraints": "Hosted PostgreSQL with forced owner RLS, private versioned S3 assets, bounded owner/shared provider allowances; 2026-10-02 review is local and provider-blocked, with no live writes or paid calls."
       },
       "output": {
         "format": "markdown_table",
         "include_rpn": true,
         "include_recommended_actions": true,
         "include_priority_badges": true,
-        "max_failure_modes": 25
+        "max_failure_modes": 120
       }
     },
     "sentinel": {
@@ -73,7 +73,7 @@
     "security_baseline": {
       "done": true,
       "date": "2026-08-21",
-      "notes": "secret scans clean both repos; .env* gitignored; SQL parameterized; upload filenames sanitized; no auth/money surfaces in Phase 1 (local single-user)"
+      "notes": "Hosted accounts and revocable sessions, signed Next-to-API bridge, PostgreSQL forced RLS/non-owner DML role, private S3 owner/version/hash binding and durable provider reservations are implemented; current review must verify their contracts without live mutations."
     }
   }
 }

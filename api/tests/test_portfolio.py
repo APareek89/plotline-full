@@ -362,3 +362,26 @@ def test_cached_failed_job_recovers_explicitly_after_workspace_restart(pg_env, m
         assert any(a.get("type")=="campaign_brief" and a["payload"]["cached"] for m in messages for a in m.get("envelope",{}).get("artifacts",[]))
         with database.connection(owner_id=actor.owner_id) as conn:
             assert conn.execute("SELECT count(*) AS n FROM usage WHERE owner_id=%s",(actor.owner_id,)).fetchone()["n"]==0
+
+
+def test_media_headroom_is_lifetime_count_and_readonly(pg_env, monkeypatch):
+    actor=pg_env()
+    monkeypatch.setenv('PLOTLINE_OWNER_MEDIA_LIMIT','6')
+    with execution_scope(actor):
+        initial=usage.media_capacity()
+        with database.connection(owner_id=actor.owner_id) as conn:
+            rows_before=conn.execute('SELECT count(*) AS n FROM usage').fetchone()['n']
+        assert initial['owner_remaining']==6 and initial['scope']=='lifetime'
+        reservation=usage.reserve(kind='media',provider='fixture',model='fixture',maximum_usd=0)
+        usage.dispatch(reservation,request_sha256='f'*64)
+        usage.settle(reservation,actual_usd=None,consumed_credits=1)
+        after=usage.media_capacity()
+        assert after['owner_used']==1 and after['owner_remaining']==5
+        assert after['shared_remaining']==initial['shared_remaining']-1
+        assert usage.media_capacity()==after, 'Read must not reset a settled or unknown-price operation'
+        with database.connection(owner_id=actor.owner_id) as conn:
+            assert conn.execute('SELECT count(*) AS n FROM usage').fetchone()['n']==rows_before+1
+        monkeypatch.setenv('PLOTLINE_OWNER_MEDIA_LIMIT','8')
+        assert usage.media_capacity()['owner_remaining']==7
+        monkeypatch.setenv('PLOTLINE_OWNER_MEDIA_LIMIT','6')
+        assert usage.media_capacity()['owner_remaining']==5

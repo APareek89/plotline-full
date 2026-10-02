@@ -1,0 +1,41 @@
+   ▲ Next.js 15.5.25
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 2.3s
+   Linting and checking validity of types ...
+
+   We detected TypeScript in your project and reconfigured your tsconfig.json file for you.
+   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+       - include was updated to add '.next-fmea-check/types/**/*.ts'
+
+   Collecting page data ...
+   Generating static pages (0/8) ...
+   Generating static pages (2/8)
+   Generating static pages (4/8)
+   Generating static pages (6/8)
+ ✓ Generating static pages (8/8)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                      136 B         103 kB
+├ ○ /_not-found                            993 B         104 kB
+├ ƒ /api/[...path]                         136 B         103 kB
+├ ƒ /api/auth/[...nextauth]                136 B         103 kB
+├ ƒ /api/auth/signup                       136 B         103 kB
+├ ƒ /api/healthz                           136 B         103 kB
+├ ƒ /api/session                           136 B         103 kB
+├ ○ /brand                               4.77 kB         107 kB
+├ ○ /campaigns                           3.94 kB         114 kB
+├ ○ /observability                       5.68 kB         108 kB
+├ ○ /studio/campaign                     2.59 kB         116 kB
+└ ƒ /studio/thread/[threadId]            18.4 kB         135 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/255-37e0f0325134c4d7.js       46.4 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)          1.92 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand

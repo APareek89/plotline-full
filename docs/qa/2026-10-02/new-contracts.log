@@ -1,0 +1,47 @@
+................................F                                        [100%]
+=================================== FAILURES ===================================
+______________ test_media_headroom_is_lifetime_count_and_readonly ______________
+
+pg_env = <function pg_env.<locals>.actor at 0x10c72ac00>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c820a40>
+
+    def test_media_headroom_is_lifetime_count_and_readonly(pg_env, monkeypatch):
+        actor=pg_env()
+        monkeypatch.setenv('PLOTLINE_OWNER_MEDIA_LIMIT','6')
+        with execution_scope(actor):
+            initial=usage.media_capacity()
+            with database.connection() as conn:
+                rows_before=conn.execute('SELECT count(*) AS n FROM usage').fetchone()['n']
+            assert initial['owner_remaining']==6 and initial['scope']=='lifetime'
+            reservation=usage.reserve(kind='media',provider='fixture',model='fixture',maximum_usd=0)
+            usage.dispatch(reservation,request_sha256='f'*64)
+            usage.settle(reservation,actual_usd=None,consumed_credits=1)
+            after=usage.media_capacity()
+            assert after['owner_used']==1 and after['owner_remaining']==5
+            assert after['shared_remaining']==initial['shared_remaining']-1
+            assert usage.media_capacity()==after, 'Read must not reset a settled or unknown-price operation'
+            with database.connection() as conn:
+>               assert conn.execute('SELECT count(*) AS n FROM usage').fetchone()['n']==rows_before+1
+E               assert 0 == (0 + 1)
+
+tests/test_portfolio.py:383: AssertionError
+=============================== warnings summary ===============================
+app/main.py:34
+  /Users/macbook/Documents/Codex/portfolio/plotline-full/api/app/main.py:34: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("startup")
+
+.venv/lib/python3.12/site-packages/fastapi/applications.py:4744
+  /Users/macbook/Documents/Codex/portfolio/plotline-full/api/.venv/lib/python3.12/site-packages/fastapi/applications.py:4744: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

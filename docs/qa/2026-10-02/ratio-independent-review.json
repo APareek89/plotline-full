@@ -1,0 +1,55 @@
+{
+  "status": "reviewed_no_blocker_for_affected_single_image_plan",
+  "at": "2026-10-02T07:31:08.775803+00:00",
+  "tests": {
+    "passed": 10,
+    "failed": 0,
+    "scope": [
+      "7ratio/geometrycontracts",
+      "2existing video gate regressions",
+      "1independent affected-input savedcanon through delivery driver"
+    ]
+  },
+  "source": {
+    "api/app/campaign.py": "d403e503e36d3557f2c8978d376756301ce888114b4e0a63700047d66e692364",
+    "api/app/media.py": "7b0eac8e8d819513eef73e353e0d6e60499e0900f5c6e91415653abdb69769e5",
+    "api/tests/test_ratio_output.py": "7b757b91ec40cf3eca2611b3f6517d2fc5a1c8171de42500f3e2ef941412503a"
+  },
+  "junit_sha256": "904ae035504f490584b34f62349a8fa1037fc5be29f35547f6c17045f72cd14a",
+  "network_events": [
+    "loopback_network_guard_installed"
+  ],
+  "real_provider_calls": 0,
+  "live_mutations": 0,
+  "app_edits_by_reviewer": 0,
+  "plan": {
+    "intended_keyframe_ratio": "4:5",
+    "output_ratios": [
+      "4:5"
+    ],
+    "new_image_dispatches": 1,
+    "new_text_dispatches": 0,
+    "saved_assets": 6,
+    "saved_hashes_unchanged": true,
+    "requires_explicit_saved_reference_reuse": true,
+    "requires_explicit_single_image_board_choice": true,
+    "requires_owner_headroom": 1,
+    "requires_own_authenticated_session": true
+  },
+  "geometry": {
+    "owned_file_read": true,
+    "raster_verified": true,
+    "maximum_pixels": 40000000,
+    "relative_aspect_tolerance": 0.035,
+    "wrong_pixels_with_correct_metadata": "refuses reuse/approval/delivery; no implicit regeneration",
+    "corrupt_keyframe": "paid asset/checkpoint retained; same-input retry does not redispatch",
+    "legacy_known_different_ratio": "counted as new image before explicit Generate1; capacity0blocks; original bytes retained",
+    "fallback_reference_scope": "owned product uploads; full canon references are used by the keyframe path"
+  },
+  "limits": [
+    "Provider visual quality not tested",
+    "Live provider dimensions not observed; future raster subject to3.5percent aspect quantization tolerance",
+    "Remaining current affected-owner quota0requires separate operator/user approval",
+    "Current root QA identity cannot access the affected different owner through existing auth interfaces"
+  ]
+}
